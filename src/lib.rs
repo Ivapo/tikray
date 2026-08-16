@@ -12,5 +12,7 @@
 //! Phase 1 implements `tikray view <png|jpeg>` and nothing else.
 
 pub mod error;
+pub mod load;
 
 pub use error::TikrayError;
+pub use load::load;

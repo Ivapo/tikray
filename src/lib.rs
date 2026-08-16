@@ -13,6 +13,7 @@
 
 pub mod error;
 pub mod load;
+pub mod term;
 
 pub use error::TikrayError;
 pub use load::load;

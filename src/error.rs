@@ -42,6 +42,9 @@ pub enum TikrayError {
 
     /// Re-encoding the buffer to PNG for the payload failed (§2.3).
     Encode { source: image::ImageError },
+
+    /// Writing the escape sequence out failed.
+    Output { source: std::io::Error },
 }
 
 impl TikrayError {
@@ -101,6 +104,9 @@ impl fmt::Display for TikrayError {
             TikrayError::Encode { source } => {
                 write!(f, "could not encode the image for display: {source}")
             }
+            TikrayError::Output { source } => {
+                write!(f, "could not write the image to stdout: {source}")
+            }
         }
     }
 }
@@ -108,7 +114,7 @@ impl fmt::Display for TikrayError {
 impl std::error::Error for TikrayError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            TikrayError::Io { source, .. } => Some(source),
+            TikrayError::Io { source, .. } | TikrayError::Output { source } => Some(source),
             TikrayError::Decode { source, .. } | TikrayError::Encode { source } => Some(source),
             TikrayError::FormatUndetermined { .. }
             | TikrayError::FormatNotAllowed { .. }

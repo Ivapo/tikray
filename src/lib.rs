@@ -11,6 +11,7 @@
 //!
 //! Phase 1 implements `tikray view <png|jpeg>` and nothing else.
 
+pub mod display;
 pub mod error;
 pub mod load;
 pub mod term;

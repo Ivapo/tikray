@@ -1,0 +1,21 @@
+[package]
+name = "tikray"
+version = "0.1.0"
+edition = "2024"
+description = "View and convert raster and vector images from the terminal, inline in iTerm2"
+license = "MIT"
+
+[dependencies]
+# Default features are kept deliberately: tkr-001 §2.4/§2.8 build the design around
+# `image` decoding more than Tikray supports, with an explicit per-phase allowlist
+# deciding what is *supported* rather than what happens to link in.
+image = "0.25"
+base64 = "0.23"
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.29"
+
+[dev-dependencies]
+# Integration tests link the library but not its dependencies, so the ones the
+# exit gate asserts through have to be named again here.
+image = "0.25"
+base64 = "0.23"

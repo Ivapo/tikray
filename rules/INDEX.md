@@ -2,3 +2,7 @@
 
 # Rules
 
+- **[core-pipeline](core-pipeline.md)** — generated 2026-08-16 · 3 sources · 48/50 lines
+  the DynamicImage waist, the content-sniffing load path, the per-phase input allowlist, and the error taxonomy the CLI renders to stderr
+- **[iterm2-display](iterm2-display.md)** — generated 2026-08-16 · 2 sources · 50/50 lines
+  the OSC 1337 argument string, the fit-down-never-up sizing arithmetic, the viewport query, and iTerm2 detection with its --force override

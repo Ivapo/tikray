@@ -15,7 +15,7 @@ phases:
     cut: null
     by: null
   - name: "Phase 2 — view an SVG, by rasterizing into the same buffer"
-    reviewed: null
+    reviewed: 2026-08-16
     shipped: null
     cut: null
     by: null
@@ -162,10 +162,13 @@ spec depends on:
   Which formats are *supported* versus *incidentally working* is settled per
   phase by an explicit allowlist (§2.8), not left to whatever the dependency
   happens to link in.
-- **`resvg`/`usvg`** rasterize SVG in pure Rust, so there is no C toolchain
-  dependency and the binary stays a single artifact. This is the deciding
-  reason over librsvg/Cairo. Version pinned at Phase 2, which is the first
-  phase that compiles it.
+- **`resvg = "0.48"` / `usvg = "0.48"`** (0.48.1 current) rasterize SVG in pure
+  Rust, so there is no C toolchain dependency and the binary stays a single
+  artifact. This is the deciding reason over librsvg/Cairo, and Phase 2's
+  round 1 confirmed it by compiling `resvg` 0.48.1, `usvg` 0.48.1 and
+  `tiny-skia` 0.12.0 with no C toolchain step — the claim is measured, not
+  assumed. `tiny-skia` arrives through `resvg` and is named because §2.11's
+  premultiplied-alpha boundary is its API, not resvg's.
 - **`base64 = "0.23"`** (0.23.1 current) for the payload, and
   **`clap = "4"`** (4.6.6 current, `derive` feature) for the CLI. `clap` is
   worth a dependency at Phase 1 rather than hand-rolled argument parsing
@@ -225,11 +228,21 @@ size to rasterize at) and that is worth knowing one phase early.
 
 **CORRECTED 2026-08-16 — it did not fire.** Phase 1's gate item 5 measured
 `window_size()` reporting real pixels in iTerm2 on this machine: a 64×48 source
-emitted `width=64px;height=48px`. So the `px` branch is the primary path, and
-Phase 2 has a viewport to rasterize an SVG against. The paragraph above is kept
+emitted `width=64px;height=48px`. So the `px` branch is the primary path. (This
+note originally added "and Phase 2 has a viewport to rasterize an SVG against";
+§2.11 has since removed the need — Phase 2 rasterizes at the SVG's own size and
+never consults the viewport.) The paragraph above is kept
 because its *reasoning* still holds — the `auto` branch stays reachable and is
 exercised by every run without a controlling terminal, including `cargo test`'s
 — but a Phase 2 implementer should not plan around it as the common case.
+
+**Also CORRECTED 2026-08-16: the parenthetical above — "an SVG has no inherent
+size to rasterize at" — is simply false**, and Phase 2's round 1 measured it.
+`usvg` resolves a size for *every* parseable input: `width`/`height` when
+present, the `viewBox`'s dimensions when only a viewBox, the content bounding box
+when neither, and `Options::default_size` (100×100) for an empty root. So an SVG
+always arrives at §2.6 with a native size, exactly like a raster, and this
+subsection's arithmetic needs no vector special case (§2.11).
 
 The whole of this subsection is a pure function of four integers, which is what
 makes Phase 1's gate machine-checkable at all (§4, Phase 1).
@@ -344,6 +357,111 @@ Whether `tikray <file>` opens the browser at that file's directory with it
 highlighted, or a single-image view, is **reserved for Phase 4** — named so it is
 not forgotten, not designed before there is a consumer.
 
+### 2.10 SVG is not an `ImageFormat`, so detection grows a type *(decision, recorded — resolves Phase 2's round-1 blocker)*
+
+§2.8 settled detection for raster input and cannot be stretched to cover SVG.
+Round 1 measured why, and the measurement is the whole argument:
+
+- `ImageReader::new(…).with_guessed_format()` returns `format() == None` for
+  plain SVG, XML-prolog SVG, BOM-prefixed SVG and gzipped `.svgz` alike;
+- `image::ImageFormat` has **no SVG variant at all**, so neither
+  `src/load.rs:ALLOWED` (`[ImageFormat; 2]`) nor
+  `TikrayError::FormatNotAllowed { format: ImageFormat }` can express one.
+
+**The trap this creates is sharper than the gap.** SVG bytes today produce
+`FormatUndetermined` — *the identical outcome Phase 1's shipped gate item 3
+asserts for a text file named `.png`*. So the obvious implementation ("if
+`image` cannot sniff it, hand the bytes to `usvg`") turns that shipped assertion
+into an SVG parse error, and Phase 1's gate goes red for a reason that looks like
+a Phase 2 bug. The dispatch must therefore be positive — SVG is *recognised*, not
+*fallen through to*.
+
+So Phase 2 introduces the input type the design has been missing:
+
+```rust
+pub enum Input { Raster(ImageFormat), Svg }
+pub fn detect(head: &[u8]) -> Option<Input>
+```
+
+**Detection order is raster first, then SVG, then nothing**, and each step is
+positive:
+
+1. `image`'s signature table (§2.8's third construction, over the same bytes —
+   nothing is seeded from the path, so §2.8's property is preserved verbatim).
+2. Otherwise **the SVG rule**: after skipping a UTF-8 BOM and leading ASCII
+   whitespace, the first byte must be `<`, **and** the case-insensitive
+   substring `<svg` must occur within the first 1024 bytes. Both conditions,
+   because either alone is too loose.
+3. Otherwise `None` → `FormatUndetermined`, unchanged.
+
+The rule is stated in bytes rather than described, because it is the thing gate
+item 1 asserts and the thing that must keep `not_an_image.png` — which begins
+`this is not an image` — returning `None`. `usvg` remains the final arbiter: a
+false positive (an HTML file carrying an inline `<svg`) becomes a legible parse
+error, never a wrong render.
+
+**Phase 2's allowlist is PNG, JPEG and SVG**, discharging §2.8's per-phase
+obligation. `ALLOWED` becomes a check over `Input` rather than over
+`[ImageFormat; 2]`.
+
+**Non-goals, named so they are refusals rather than surprises:** gzipped `.svgz`
+(sniffs as `None`, so it lands on `FormatUndetermined` — a legible refusal
+message for it is a candidate for a later phase, not this one) and UTF-16-encoded
+SVG. Neither is claimed and neither is gated.
+
+### 2.11 Rasterize at the SVG's own size; §2.6 then applies unchanged *(decision, recorded — resolves Phase 2's round-1 blockers)*
+
+The seed design said Phase 2's "rasterization target size derives from the
+display sizing decision". **That is deleted, because under §2.6 it buys nothing
+and costs the architecture.** Round 1 established both halves:
+
+- **It buys nothing.** `scale = min(W/w, H/h, 1.0)` never exceeds `1.0`, so the
+  fit size is never *larger* than native — and rasterizing at a size you are
+  never allowed to exceed cannot be sharper than rasterizing at native. Measured:
+  a `viewBox="0 0 24 24"` icon resolves to 24×24, `fit((24,24), (1600,1200))`
+  returns `(24,24)`, and it draws as 24 device pixels either way. The seed's
+  claim that this is "the one place where output quality actually depends on
+  getting sizing right first" is false under the rule §2.6 records.
+- **It costs the architecture.** `src/load.rs:load` takes no viewport, and the
+  viewport is not discovered until `src/display.rs:display` calls
+  `src/term.rs:viewport` — two steps later in `src/main.rs:run`. Deriving the
+  raster size from the viewport forces either a signature change or a `load`
+  that reads the environment, making the pipeline's first stage
+  environment-dependent.
+
+**So: rasterize at `usvg`'s resolved size, and `load`'s signature does not
+change.** From that point SVG is indistinguishable from PNG, which is §2.1's
+claim actually being cashed rather than asserted. Three mechanical consequences,
+each measured at round 1 and each gated:
+
+- **Size comes from `usvg::Size::to_int_size()`**, which rounds — `width="10mm"
+  height="5mm"` resolves to `37.795 × 18.898` and becomes `38 × 19`. Naming the
+  rounding mode matters because it changes the emitted `px` arguments.
+- **`tiny_skia::Pixmap` is premultiplied, and the obvious conversion corrupts
+  alpha.** `RgbaImage::from_raw(w, h, pixmap.take())` — the one-liner an
+  implementer reaches for — carries 50%-opacity red through as `[128, 0, 0, 128]`,
+  compositing over white as `(191,127,127)` instead of `(255,127,127)`. Every
+  pixel must go through `PremultipliedColorU8::demultiply()`. This is the same
+  shape as the round-2 finding on §2.8: silent, plausible, and invisible to a
+  gate that only checks dimensions — so gate item 3 asserts the pixel value.
+- **`usvg::Options::default()` has an empty font database**, so `<text>` renders
+  **zero** non-transparent pixels with no error — exactly the blank image the
+  gate forbids. Tikray calls `load_system_fonts()`. The startup cost (≈800 faces)
+  is accepted for v1 over correctness; scanning the source bytes for `<text`
+  first would avoid it in the common case and is recorded here as available, not
+  taken.
+
+**Non-goal, named rather than discovered:** `usvg::Options::resources_dir`
+defaults to `None`, so an SVG referencing a raster by relative `href` silently
+drops that element. Phase 2 does not set it and does not claim otherwise; a
+self-contained SVG is what is supported. Setting it from the input file's parent
+is a one-line change available to any later phase that wants it.
+
+**`--force` and the `auto` branch are unaffected.** An SVG loaded with no
+reported viewport emits `width=auto;height=auto` around a PNG of the SVG's
+natural size, which is well-defined precisely because §2.6's corrected note is
+right that usvg always resolves one.
+
 ## 3. Open questions
 
 - **OQ-1** — Can OSC 1337 inline images coexist with a Ratatui full-screen
@@ -410,6 +528,19 @@ not forgotten, not designed before there is a consumer.
   fix, if needed, is a divisor in §2.6 and nothing else. Phase 2 inherits it,
   since rasterizing an SVG at half the intended size wastes the one advantage
   vector input has.)*
+
+- **OQ-8** — **Should vector input be allowed to render *larger* than its natural
+  size?** §2.11 applies §2.6's never-upscale clamp to SVG exactly as to raster,
+  so a `viewBox="0 0 24 24"` icon draws as a 24-pixel speck — consistent with a
+  24×24 PNG, and arguably the whole advantage of vector input thrown away, since
+  an SVG is the one input that *could* be re-rendered sharp at any size. The
+  clamp was chosen deliberately (it is OQ-3's recorded resolution, and §1.1 makes
+  scaling a non-goal in v1), so this is not an oversight; it is the cost of that
+  consistency, now visible. Any fix is a user-facing scaling operation — a
+  `--size`/`--scale` flag, or a rule that vector fits *up* to the viewport —
+  which §1.1 excludes from v1 by name. *(design call — **deferred past v1**.
+  Blocks no phase; Phase 2 ships the clamp and gate item 7 records what it looks
+  like, so the decision is made against something seen rather than imagined.)*
 
 ## 4. Implementation phases
 
@@ -507,17 +638,77 @@ the observable's first half, and this is the smallest surface that reaches it.*
 ### Phase 2 — view an SVG, by rasterizing into the same buffer
 *Produces the observable: yes — the same drawn image, from vector input.*
 
-- **Scope:** `resvg`/`usvg` behind the same `load(path) -> DynamicImage` entry
-  point Phase 1 defined (§2.1 — the waist is `DynamicImage`, not a fixed RGBA8
-  raster), dispatching on detected input type rather than on file extension
-  alone. Rasterization target size derives from the display
-  sizing decision, since rasterizing an SVG at the wrong size is the one place
-  where output quality actually depends on getting sizing right first.
-- **Exit gate:** `tikray view <a.svg>` draws the SVG inline, sharp at the chosen
-  display size (visibly not an upscaled small raster). An SVG that `usvg`
-  rejects produces an actionable parse error, not a blank image.
-- **Close-out:** updates `rules/core-pipeline.md` with the vector branch; adds
-  `rules/svg-rasterization.md`.
+- **Scope:** `resvg`/`usvg` behind the same
+  `src/load.rs:load` entry point Phase 1 shipped — **its signature does not
+  change** (§2.11). Dispatch is on detected input type via the new `Input` enum
+  (§2.10), never on the path extension.
+
+  | File | Entry points |
+  |---|---|
+  | `src/load.rs` | `pub enum Input { Raster(ImageFormat), Svg }`, `pub fn detect(head: &[u8]) -> Option<Input>`; `load` reads the file once, sniffs, and dispatches |
+  | `src/svg.rs` | `pub fn rasterize(path: &Path, bytes: &[u8]) -> Result<DynamicImage, TikrayError>` |
+  | `src/error.rs` | `+ SvgParse { path, source }`, `+ Rasterize { path, reason }` |
+  | `src/lib.rs` | `pub mod svg;` |
+
+  `load` now reads the whole file into memory before sniffing, because `usvg`
+  needs the bytes anyway. **The §2.8 property is preserved and must stay
+  preserved:** the reader is built as `ImageReader::new(Cursor::new(&bytes))`,
+  seeding nothing from the path, so a text file named `.png` is still
+  `FormatUndetermined` and a PNG named `.txt` still loads. `rasterize` is a
+  deterministic function of `bytes` — the `path` is read only to label errors,
+  following `src/error.rs:TikrayError::io`'s precedent, since `SvgParse` and
+  `Rasterize` both carry one — which is the seam that makes this phase testable
+  without a terminal, exactly as `sequence` was for Phase 1.
+
+- **Exit gate:** six machine-checkable items plus one a human checks. The blast
+  radius is the shared `load` entry point, so item 6 is not optional.
+
+  1. **`detect` reproduces §2.10.** `rgb.png` → `Some(Raster(Png))`; `rgb.jpg` →
+     `Some(Raster(Jpeg))`; a bare `<svg>` fixture, one with an XML prolog, and one
+     with a UTF-8 BOM each → `Some(Svg)`; a `.svgz` → `None`; and
+     **`not_an_image.png` → `None`** — Phase 1's shipped assertion restated at the
+     new seam, which is the one §2.10 exists to protect.
+  2. **`load` rasterizes into the waist at `usvg`'s resolved size.**
+     `viewBox="0 0 24 24"` with no `width`/`height` → **24×24**;
+     `width="10mm" height="5mm"` → **38×19** (`to_int_size()` rounds
+     37.795×18.898); neither attribute nor viewBox, containing a lone 10×10 rect
+     → **10×10**.
+  3. **Alpha survives the premultiplied boundary.** A 50%-opacity red rect
+     rasterizes to a pixel equal to `[255, 0, 0, 128]`, **not** `[128, 0, 0, 128]`
+     (§2.11). Dimensions alone cannot catch this, which is why it is a pixel
+     assertion.
+  4. **Text renders.** A 24px `<text>Hello</text>` SVG rasterizes to a **non-zero**
+     count of non-transparent pixels — zero is what an empty font database
+     produces, silently. *This item is knowingly environment-dependent*: it
+     passes because the machine running it has system fonts, and would fail in a
+     fontless container where `load_system_fonts()` finds none. That is the
+     property Phase 1's gate item 4 was reshaped to avoid, accepted here because
+     the alternative — bundling a font — is a heavier decision than the assertion
+     is worth, and because a fontless build genuinely cannot render text.
+  5. **A malformed SVG is refused, not blanked.** Bytes that `detect` calls `Svg`
+     but `usvg` rejects produce `SvgParse`, and the CLI exits non-zero writing
+     **zero bytes** to stdout. ("Not a blank image" is unreachable by
+     construction — `src/main.rs:run` returns before `display` writes — so the
+     assertion is on the refusal, not on the absence of a draw.)
+  6. **Phase 1's gate still passes, unmodified.** All 16 assertions in
+     `tests/gate.rs` green with no edits to that file. Phase 2 changes the shared
+     entry point; this is what proves it changed nothing behind it.
+  7. **Human, in iTerm2:** `tikray view <a.svg>` draws the SVG. One whose natural
+     size exceeds the window appears whole and undistorted. **A 24×24-viewBox icon
+     appears at 24 px — small.** That is §2.6's clamp applying to vector exactly
+     as to raster, and recording how it looks is what makes OQ-8 a decision taken
+     against something seen.
+
+- **Close-out:** adds `rules/svg-rasterization.md`. Updates
+  `rules/core-pipeline.md` with the vector branch **and its frontmatter** — the
+  new `src/svg.rs` must be added to that file's `sources:`, or `/sync-rules`
+  regenerates it without ever reading the module; it sits at 48/50 lines, so
+  `max_lines` needs raising in the same edit. Updates the README's supported-input
+  table, **and `src/error.rs:TikrayError`'s `FormatNotAllowed` message**, which
+  ends "supported input formats are PNG and JPEG" and becomes false the moment the
+  allowlist grows. `tests/gate.rs` needs no edit for it — the shipped assertion
+  checks only that the message names GIF — which is what keeps gate item 6
+  satisfiable.
 
 ### Phase 3 — convert: write the buffer back out in another format
 *Produces the observable: yes — the observable's second half, a file that opens

@@ -10,7 +10,24 @@
 //! something an assertion can see, which is why item 5 below pins the *pure*
 //! function that decides whether bytes are emitted at all.
 
+use image::{DynamicImage, RgbImage};
+use tikray::display::sequence;
 use tikray::term::cell_size;
+use tikray::tui::{pane_sequence, pane_viewport};
+
+fn image(w: u32, h: u32) -> DynamicImage {
+    DynamicImage::ImageRgb8(RgbImage::new(w, h))
+}
+
+/// The argument segment of a sequence — `ESC ] 1337 ; File=<args> : <payload> BEL`.
+fn args(seq: &[u8]) -> String {
+    let text = String::from_utf8(seq.to_vec()).expect("the sequence is ASCII");
+    let body = text
+        .strip_prefix("\x1b]1337;File=")
+        .and_then(|b| b.strip_suffix('\x07'))
+        .expect("header and terminator");
+    body.split_once(':').expect("args : payload").0.to_string()
+}
 
 // ---------------------------------------------------------------------------
 // Item 1 — `cell_size` reproduces §2.14's arithmetic.
@@ -39,4 +56,68 @@ fn gate1_cell_size_truncates_toward_the_safe_direction() {
     // is zero cells' worth of pixels, which cannot produce a pane size either.
     assert_eq!(cell_size((2540, 1590), (158, 44)), Some((16, 36)));
     assert_eq!(cell_size((100, 1584), (158, 44)), None);
+}
+
+// ---------------------------------------------------------------------------
+// Item 2 — `pane_viewport` turns cells into pixels.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gate2_pane_viewport_multiplies_cells_by_the_cell_size() {
+    assert_eq!(pane_viewport((40, 20), Some((16, 36))), Some((640, 720)));
+}
+
+#[test]
+fn gate2_fits_to_the_pane_rather_than_to_the_window() {
+    // The one place Phase 4 touches shipped arithmetic: `fit`'s clamp applied to
+    // a pane. scale = min(640/1200, 720/800, 1.0) = 0.5333..., so 800 rounds to
+    // 427 -- and 427 is what the terminal is told, not 800.
+    let viewport = pane_viewport((40, 20), Some((16, 36)));
+    let args = args(&sequence(&image(1200, 800), viewport).unwrap());
+    assert!(args.contains("width=640px"), "args were {args:?}");
+    assert!(args.contains("height=427px"), "args were {args:?}");
+}
+
+#[test]
+fn gate2_pane_viewport_reports_none_without_a_cell_size() {
+    // Item 5's input: no cell geometry, so there is no pane size to emit.
+    assert_eq!(pane_viewport((40, 20), None), None);
+}
+
+#[test]
+fn gate2_a_degenerate_pane_is_none_rather_than_auto() {
+    // Asserted rather than inherited. A pane shrunk to nothing under a bordered
+    // layout multiplies out to (0, ..); `fit` returns None for a zero axis, and
+    // `sequence` would then emit width=auto;height=auto -- §2.14's row 8, the
+    // spill, reached from the other side.
+    assert_eq!(pane_viewport((0, 20), Some((16, 36))), None);
+    assert_eq!(pane_viewport((40, 0), Some((16, 36))), None);
+}
+
+// ---------------------------------------------------------------------------
+// Item 5 — the no-pixel fallback emits nothing.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gate5_pane_sequence_emits_zero_bytes_without_a_cell_size() {
+    // Not `auto`, and not a shorter sequence: nothing at all. The pane draws the
+    // explanation instead.
+    assert_eq!(
+        pane_sequence(&image(1200, 800), (40, 20), None).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn gate5_pane_sequence_carries_the_pane_arguments_with_one() {
+    // The same call with a cell size returns item 2's arguments, so one function
+    // covers both branches -- which is what makes it the single place deciding
+    // whether bytes reach the terminal at all.
+    let bytes = pane_sequence(&image(1200, 800), (40, 20), Some((16, 36)))
+        .unwrap()
+        .expect("a cell size means bytes");
+    let args = args(&bytes);
+    assert!(args.contains("width=640px"), "args were {args:?}");
+    assert!(args.contains("height=427px"), "args were {args:?}");
+    assert!(args.contains("inline=1"), "args were {args:?}");
 }

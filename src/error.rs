@@ -80,6 +80,15 @@ pub enum TikrayError {
         path: PathBuf,
         source: std::io::Error,
     },
+
+    /// Driving the terminal from the TUI failed.
+    ///
+    /// Its own variant rather than [`TikrayError::Output`]: that one is the
+    /// display path writing a sequence to stdout, and this one covers raw mode,
+    /// the alternate screen, event reads and ratatui's own writes — whose
+    /// backend error type is [`std::io::Error`] too, which is why one variant
+    /// carries all of them.
+    Tui { source: std::io::Error },
 }
 
 impl TikrayError {
@@ -179,6 +188,9 @@ impl fmt::Display for TikrayError {
             TikrayError::Write { path, source } => {
                 write!(f, "could not write {}: {source}", path.display())
             }
+            TikrayError::Tui { source } => {
+                write!(f, "could not drive the terminal: {source}")
+            }
         }
     }
 }
@@ -188,7 +200,8 @@ impl std::error::Error for TikrayError {
         match self {
             TikrayError::Io { source, .. }
             | TikrayError::Output { source }
-            | TikrayError::Write { source, .. } => Some(source),
+            | TikrayError::Write { source, .. }
+            | TikrayError::Tui { source } => Some(source),
             TikrayError::Decode { source, .. } | TikrayError::Encode { source } => Some(source),
             TikrayError::SvgParse { source, .. } => Some(source),
             TikrayError::FormatUndetermined { .. }

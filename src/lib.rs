@@ -21,6 +21,7 @@ pub mod error;
 pub mod load;
 pub mod svg;
 pub mod term;
+pub mod tui;
 
 pub use error::TikrayError;
 pub use load::load;

@@ -1,57 +1,11 @@
 //! `tikray` — the CLI caller of the library core.
 
-use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::Parser as _;
+use tikray::cli::{Cli, Command};
 use tikray::convert::{self, Output};
-use tikray::{TikrayError, display, load, term};
-
-#[derive(Parser)]
-#[command(
-    name = "tikray",
-    version,
-    about = "View and convert images from the terminal"
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Draw an image inline in iTerm2.
-    View {
-        /// Emit the escape sequence even where this does not look like iTerm2.
-        #[arg(long)]
-        force: bool,
-
-        /// The PNG, JPEG or SVG to draw.
-        path: PathBuf,
-    },
-
-    /// Write an image out in another format.
-    Convert {
-        /// The output format, overriding whatever the destination's extension
-        /// names. One of: png, jpg, jpeg.
-        ///
-        /// No short form, deliberately: `-f` is the obvious abbreviation for
-        /// this and for --overwrite alike, and `view --force` already means
-        /// something else entirely (§2.12).
-        #[arg(long)]
-        format: Option<String>,
-
-        /// Replace the destination if it already exists.
-        #[arg(long)]
-        overwrite: bool,
-
-        /// The PNG, JPEG or SVG to read.
-        input: PathBuf,
-
-        /// Where to write it. Its extension picks the format unless --format does.
-        output: PathBuf,
-    },
-}
+use tikray::{TikrayError, display, load, term, tui};
 
 fn main() -> ExitCode {
     match run() {
@@ -64,7 +18,17 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), TikrayError> {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+
+    let Some(command) = cli.command else {
+        // No subcommand is the TUI, with or without a path. A bare path does
+        // not draw inline: adding an argument must not flip the output mode
+        // (§2.9), and `view` is the opt-in for "print it and give me my prompt
+        // back".
+        return tui::run(cli.path.as_deref());
+    };
+
+    match command {
         Command::View { force, path } => {
             // Detection comes first, and before anything reaches stdout: a
             // refused run must write zero bytes there (§2.7, gate item 4).

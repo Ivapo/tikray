@@ -52,7 +52,7 @@ const KEYS: &str = " ↑/↓ move   ⏎ open   ← up   q quit ";
 /// which is why they are reported before any per-entry reason. A user who reads
 /// "not an image" on file after file has been told the wrong thing.
 const NOT_ITERM2: &str = "no preview: this does not look like iTerm2";
-const NO_PIXELS: &str = "no preview: this terminal reports no size in pixels";
+const NO_PIXELS: &str = "no preview: this terminal reports no pixel size";
 
 /// A pane's size in pixels, or [`None`] where no image may be emitted (§2.14).
 ///
@@ -112,6 +112,9 @@ pub fn run(start: Option<&Path>) -> Result<(), TikrayError> {
     let previews = match term::detect_iterm2(false) {
         Ok(()) => true,
         Err(TikrayError::NotIterm2) => false,
+        // The same condition §2.7 refuses on, refused with different advice:
+        // `--force` is `view`'s escape hatch and buys a browser nothing.
+        Err(TikrayError::NotATty) => return Err(TikrayError::NoScreen),
         Err(err) => return Err(err),
     };
 

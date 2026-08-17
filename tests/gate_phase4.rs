@@ -10,7 +10,11 @@
 //! something an assertion can see, which is why item 5 below pins the *pure*
 //! function that decides whether bytes are emitted at all.
 
+use std::path::Path;
+
+use clap::Parser as _;
 use image::{DynamicImage, RgbImage};
+use tikray::cli::{Cli, Command};
 use tikray::display::sequence;
 use tikray::term::cell_size;
 use tikray::tui::{pane_sequence, pane_viewport};
@@ -92,6 +96,50 @@ fn gate2_a_degenerate_pane_is_none_rather_than_auto() {
     // spill, reached from the other side.
     assert_eq!(pane_viewport((0, 20), Some((16, 36))), None);
     assert_eq!(pane_viewport((40, 0), Some((16, 36))), None);
+}
+
+// ---------------------------------------------------------------------------
+// Item 3 — the clap tree parses all four invocations.
+// ---------------------------------------------------------------------------
+//
+// Parsed, never run: `tikray` and `tikray a.png` open a TUI, and a gate that
+// had to launch one could not assert on what they mean. That is the whole
+// reason `Cli` moved out of `src/main.rs`.
+
+#[test]
+fn gate3_bare_tikray_is_the_tui_with_no_path() {
+    let cli = Cli::try_parse_from(["tikray"]).expect("a bare invocation is legal");
+    assert!(cli.command.is_none(), "no subcommand");
+    assert_eq!(cli.path, None, "and nowhere in particular to start");
+}
+
+#[test]
+fn gate3_a_bare_path_is_the_tui_starting_there() {
+    let cli = Cli::try_parse_from(["tikray", "a.png"]).expect("a bare path is legal");
+    assert!(cli.command.is_none(), "a path is not a subcommand");
+    assert_eq!(cli.path.as_deref(), Some(Path::new("a.png")));
+}
+
+#[test]
+fn gate3_the_two_subcommands_still_parse() {
+    let cli = Cli::try_parse_from(["tikray", "view", "a.png"]).unwrap();
+    assert!(matches!(cli.command, Some(Command::View { .. })));
+
+    let cli = Cli::try_parse_from(["tikray", "convert", "a.png", "b.jpg"]).unwrap();
+    assert!(matches!(cli.command, Some(Command::Convert { .. })));
+}
+
+#[test]
+fn gate3_view_with_no_path_is_an_error_not_a_file_named_view() {
+    // Decision 1 pinned rather than described: a bare first argument is a
+    // subcommand when it *exactly* matches one, so this is `view` missing its
+    // required argument — not the browser opened on a file called "view".
+    // `./view` is the escape hatch for the file that really is called that.
+    assert!(Cli::try_parse_from(["tikray", "view"]).is_err());
+
+    let cli = Cli::try_parse_from(["tikray", "./view"]).expect("the escape hatch parses");
+    assert!(cli.command.is_none(), "./view is a path, not a subcommand");
+    assert_eq!(cli.path.as_deref(), Some(Path::new("./view")));
 }
 
 // ---------------------------------------------------------------------------

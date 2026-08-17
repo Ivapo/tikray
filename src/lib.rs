@@ -15,6 +15,7 @@
 //! of the waist is blind to which edge filled it, and every input the load path
 //! supports is convertible on arrival rather than one at a time.
 
+pub mod cli;
 pub mod convert;
 pub mod display;
 pub mod error;

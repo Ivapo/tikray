@@ -53,6 +53,15 @@ pub enum TikrayError {
     /// No iTerm2 signal in the environment (§2.7).
     NotIterm2,
 
+    /// Stdout is not a terminal, and the TUI needs one to be a screen.
+    ///
+    /// Separate from [`TikrayError::NotATty`] because the advice differs, not
+    /// because the condition does: `--force` is `view`'s escape hatch, and it
+    /// buys the browser nothing — there is still no screen. The *other* half of
+    /// §2.7's check is not a refusal here at all; a non-iTerm2 terminal browses
+    /// fine, it just shows no previews.
+    NoScreen,
+
     /// Encoding the buffer failed, on the display edge or the convert one.
     Encode { source: image::ImageError },
 
@@ -151,6 +160,11 @@ impl fmt::Display for TikrayError {
                  LC_TERMINAL=iTerm2 is set) — tikray's inline display is iTerm2-only; \
                  use --force to emit anyway"
             ),
+            TikrayError::NoScreen => write!(
+                f,
+                "stdout is not a terminal, so there is no screen to browse in — \
+                 use `tikray view <path>` or `tikray convert <in> <out>` instead"
+            ),
             TikrayError::Encode { source } => {
                 write!(f, "could not encode the image: {source}")
             }
@@ -209,6 +223,7 @@ impl std::error::Error for TikrayError {
             | TikrayError::Rasterize { .. }
             | TikrayError::NotATty
             | TikrayError::NotIterm2
+            | TikrayError::NoScreen
             | TikrayError::OutputUndetermined { .. }
             | TikrayError::OutputNotAllowed { .. }
             | TikrayError::OutputSvg { .. }

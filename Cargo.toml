@@ -20,9 +20,19 @@ usvg = "0.48"
 base64 = "0.23"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.29"
+# `ratatui-crossterm`'s own `default` feature already selects `crossterm_0_29`,
+# so a plain dependency here resolves to the one crossterm instance `src/term.rs`
+# already uses -- no explicit feature needed (tkr-001 §2.14).
+ratatui = "0.30"
+# For the one interruption neither a Drop guard nor a panic hook covers: a real
+# `kill -INT` default-terminates without unwinding, so nothing restores the
+# terminal. Already in Cargo.lock transitively via crossterm, so this unifies a
+# version rather than adding a tree.
+signal-hook = "0.3"
 
 [dev-dependencies]
 # Integration tests link the library but not its dependencies, so the ones the
 # exit gate asserts through have to be named again here.
 image = "0.25"
 base64 = "0.23"
+clap = { version = "4", features = ["derive"] }

@@ -20,7 +20,7 @@ phases:
     cut: null
     by: null
   - name: "Phase 3 — convert: write the buffer back out in another format"
-    reviewed: null
+    reviewed: 2026-08-16
     shipped: null
     cut: null
     by: null
@@ -320,7 +320,7 @@ Four invocations. The split is by **surface**, not by verb:
 | Invocation | Surface | Phase |
 |---|---|---|
 | `tikray view [--force] <path>` | inline, one-shot, returns to the prompt | 1 |
-| `tikray convert <in> <out>` | no display; writes a file | 3 |
+| `tikray convert [--format <fmt>] [--overwrite] <in> <out>` | no display; writes a file | 3 |
 | `tikray` | TUI browser | 4 |
 | `tikray <path>` | TUI browser, starting there | 4 |
 
@@ -462,6 +462,112 @@ reported viewport emits `width=auto;height=auto` around a PNG of the SVG's
 natural size, which is well-defined precisely because §2.6's corrected note is
 right that usvg always resolves one.
 
+### 2.12 Output is a type too, and SVG is refused by name *(decision, recorded — resolves OQ-2 and Phase 3's round-1 blocker)*
+
+§2.10 grew an `Input` type because `image::ImageFormat` cannot express SVG. **The
+output side has the identical gap, and the identical trap.** Round 1 measured it:
+
+```
+ImageFormat::from_path("out.svg")
+  → Err(Unsupported(UnsupportedError { format: PathExtension("svg"), … }))
+```
+
+whose rendered message is *"the file extension `svg` was not recognized as an
+image format"* — **false**, since Tikray reads SVG perfectly well, and not the
+"documented message" the phase's gate demands. So the obvious mechanism cannot
+express the refusal, exactly as §2.10 found on the input side.
+
+```rust
+pub enum Output { Png, Jpeg }
+pub fn resolve(dest: &Path, over: Option<&str>) -> Result<Output, TikrayError>
+```
+
+**The allowlist is the type.** §2.8 makes "support is an explicit allowlist, per
+phase" a standing obligation, and Phase 3 discharges it structurally rather than
+in prose: a two-variant enum cannot name a format no phase has gated. That is
+worth doing here because the encode edge is *wider* than the decode edge —
+measured, an RGBA8 buffer encodes happily to **Png, Jpeg, Gif, WebP, Bmp, Tiff,
+Ico, Qoi and Tga**, so "whatever `image` will write" is nine formats, not two.
+
+`resolve` reads `--format` when given, else the destination's extension, both
+case-insensitively (`ImageFormat::from_path("OUT.PNG")` → `Png`, confirmed):
+
+1. `png` → `Output::Png`; `jpg` or `jpeg` → `Output::Jpeg`.
+2. `svg` or `svgz` → **refused by name** (below).
+3. Any other extension → refused, naming it.
+4. No extension and no `--format` → refused as undetermined.
+
+**OQ-2 resolves as: SVG is input-only in v1, and both readings are refused.**
+Raster→SVG is not a format change — it is tracing, which is a different and much
+larger project — and SVG→SVG passthrough is the case §2.1 already excludes by
+making the pixel buffer the narrow waist. One error variant carries both
+readings, because the destination is `.svg` either way and only the source
+differs:
+
+```
+cannot write SVG: tikray converts through a pixel buffer, so a raster in would
+have to be traced (a different tool), and an SVG in would come back out a raster
+wearing an .svg extension — supported output formats are PNG and JPEG
+```
+
+*Wrap-and-document was considered and rejected*: an `.svg` containing a base64
+`<image>` element opens anywhere and scales like the raster it is, which makes
+the extension a claim the file does not honour. Recorded as rejected rather than
+omitted, so a later phase can adopt it with the trade-off already written down.
+
+**Output errors are their own variants, never `FormatNotAllowed`.** That one's
+message ends *"supported **input** formats are PNG, JPEG and SVG"*, so reusing it
+for an output refusal would report about the wrong side of the pipeline.
+
+**Neither flag takes a short form.** `-f` is the obvious abbreviation for both
+`--format` and an overwrite guard, and `view` already ships `--force` with an
+entirely different meaning (§2.7's detection bypass). One letter meaning three
+things in one binary is a vocabulary collision, so the guard is spelled
+`--overwrite` and nothing is abbreviated.
+
+### 2.13 Alpha is composited over white, and quality is not a flag *(decision, recorded — resolves OQ-4)*
+
+**The library's default here is silently and materially wrong**, which is why
+this is a decision rather than a shrug. Measured against `image` 0.25.10:
+`DynamicImage::write_to(_, Jpeg)` on an RGBA8 buffer **succeeds** by calling
+`to_rgb8()`, which drops the alpha channel with no compositing at all:
+
+| pixel | naive `write_to(Jpeg)` | composited over white |
+|---|---|---|
+| `[255, 0, 0, 128]` (50% red) | `[254, 1, 0]` | `[255, 127, 127]` |
+| `[0, 0, 0, 0]` (transparent) | **`[0, 1, 0]` — black** | `[255, 255, 255]` |
+
+So every transparent PNG or SVG converted to JPEG comes out on a **black**
+background, exit 0, correct dimensions, correct format, no error. This is the
+third instance of the shape §2.8 and §2.11 already record — silent, plausible,
+and invisible to a gate that checks dimensions — and it is the one the observable
+is most exposed to, because §1 judges the converted file by opening it.
+
+**So Tikray composites explicitly, before encoding, whenever the target is JPEG
+and the buffer carries an alpha channel:** `out = src·α + 255·(1−α)` per channel.
+White, because it is what browsers and image viewers do, so the result matches
+what the user last saw the file look like.
+
+**And it says so** — one line on stderr naming the flattening, exit zero. Silence
+would make this the fourth member of that list rather than the fix for it. The
+note fires on the source buffer *having* an alpha channel, not on any pixel
+actually being transparent: a coarser rule, and one an implementer cannot get
+subtly wrong. **`src/main.rs:run` emits it, not `encode`** — `encode` is the phase's
+pure seam, and a function that writes to stderr is not one.
+
+**Quality and compression stay at the library defaults, with no flags** (JPEG
+quality 75, via `JpegEncoder::new`). §1.1 makes editing a non-goal, and a
+`--quality` flag is the thin end of exactly the operator set this project refuses
+to grow. Recorded as available, not taken — a later phase can add it against a
+real complaint rather than an imagined one.
+
+**JPEG is not byte-exact, so no gate may key to a literal through it.** Measured:
+`[255, 127, 127]` written and re-read comes back `[251, 125, 139]`, and
+`[255, 255, 255]` comes back `[255, 255, 243]`. Phase 3's gate therefore asserts
+the *distinction* — a flattened pixel is near-white, a dropped-alpha one is
+near-black, some 250 apart — rather than an equality that would be pinning the
+encoder's rounding.
+
 ## 3. Open questions
 
 - **OQ-1** — Can OSC 1337 inline images coexist with a Ratatui full-screen
@@ -473,13 +579,18 @@ right that usvg always resolves one.
   argument now)* **§2.9's grammar rides on this**: `tikray <path>` is defined as
   the TUI, so if Phase 4 is cut or re-shaped the bare-path form falls back to
   `view`'s inline behaviour rather than being left undefined.
-- **OQ-2** — What does "convert to SVG" mean? The seed document promises "any of
+- **OQ-2** — ~~What does "convert to SVG" mean? The seed document promises "any of
   the above into any of the others", but raster→SVG is not a format change: it
   is either vectorization/tracing (a different and much larger project) or
   wrapping the raster in an SVG container (technically an `.svg` file, arguably
   a lie). Options: refuse it with a clear error, wrap-and-document, or drop SVG
-  from the output set entirely. *(needs-input — this narrows an advertised
-  capability, so it is not a design call to make silently)*
+  from the output set entirely.~~ **RESOLVED 2026-08-16 — §2.12.** Refused, by
+  name, both readings: **SVG is input-only in v1.** The seed's "any of the above
+  into any of the others" is narrowed, which is why this was `needs-input` and
+  was put to a person rather than decided at the keyboard. Wrap-and-document is
+  recorded as rejected with its trade-off, not omitted. §2.1 had already
+  foreclosed half of it — vector-to-vector passthrough is the case the waist
+  excludes — so what needed an answer was raster→SVG, and the answer is no.
 - **OQ-3** — ~~Display sizing policy. Terminal cells are not pixels, and an
   image larger than the window has to be fitted. What is the default
   (fit-to-width, fit-to-window, native size with scroll), and does the user
@@ -488,10 +599,15 @@ right that usvg always resolves one.
   visible rather than edited away — Tikray does no cell/pixel conversion at all,
   because `width`/`height` accept a `px` form and the viewport is read in pixels
   from `window_size()`. No user override in v1; the sizing rule is not a flag.
-- **OQ-4** — Alpha and quality on export. JPEG has no alpha channel, so
+- **OQ-4** — ~~Alpha and quality on export. JPEG has no alpha channel, so
   RGBA→JPEG must composite against something (white? black? a flag?) or refuse.
-  Likewise JPEG quality and PNG compression level: defaults, or exposed?
-  *(design call — Phase 3)*
+  Likewise JPEG quality and PNG compression level: defaults, or exposed?~~
+  **RESOLVED 2026-08-16 — §2.13.** Composited over **white**, explicitly, with a
+  line on stderr saying so; quality and compression stay at library defaults with
+  no flags. The question understated itself: the library does not refuse and does
+  not composite — it drops alpha, so a transparent pixel lands on **black**
+  (measured `[0, 0, 0, 0]` → `[0, 1, 0]`). "Or refuse" was never the live
+  alternative to "composite"; *silently wrong* was.
 - **OQ-5** — Does `view` need to survive tmux and ssh? tmux requires escape
   passthrough and iTerm2's protocol is commonly broken by it. Supporting it is
   small if designed in and awkward if retrofitted. *(needs-input — it is a
@@ -502,12 +618,16 @@ right that usvg always resolves one.
   re-argued before Phase 4 rather than after.
 - **OQ-6** — Multi-frame inputs (animated GIF, multi-page TIFF). §1.1 declares
   first-frame-only; the open part is whether the tool must *say* so, and where.
-  *(design call — **Phase 3**, which is the first phase whose allowlist can
-  admit one.)* §2.8's Phase 1 allowlist keeps GIF and TIFF out entirely, so this
-  cannot fire there. The one residual case is APNG, which sniffs as PNG and so
-  passes the allowlist: what `image`'s default decode path yields for one — first
-  frame, default image, or an error — is unverified, and Phase 1 neither claims
-  nor gates it.
+  ~~*(design call — **Phase 3**, which is the first phase whose allowlist can
+  admit one.)*~~ **REASSIGNED 2026-08-16 — Phase 3's round 1 falsified the
+  premise.** Phase 3 adds an *output* allowlist and leaves the input allowlist
+  where Phase 2 put it, so no multi-frame input can reach it either: this is a
+  design call for **whichever later phase grows the input set**, and there is
+  none currently specced. §2.8's Phase 1 allowlist keeps GIF and TIFF out
+  entirely, so this cannot fire there. The one residual case is APNG, which
+  sniffs as PNG and so passes the allowlist: what `image`'s default decode path
+  yields for one — first frame, default image, or an error — is unverified, and
+  no phase through 3 claims or gates it.
 - **OQ-7** — ~~Are `window_size()`'s pixel fields **device pixels or display
   points?**~~ **RESOLVED — measured at Phase 1's gate, 2026-08-16: device
   pixels.** An image wider than the window occupied approximately the full
@@ -714,20 +834,113 @@ the observable's first half, and this is the smallest surface that reaches it.*
 *Produces the observable: yes — the observable's second half, a file that opens
 and looks right.*
 
-- **Scope:** `tikray convert <in> <out>`, output format inferred from the
-  destination extension with an explicit override flag. Encodes the same buffer
-  Phases 1–2 fill, so every input type already supported is convertible on
-  arrival. Resolves OQ-2 (SVG as an output target) and OQ-4 (alpha flattening
-  and quality defaults) — both must be *answered in the spec* before this phase
-  is cleared, not decided at the keyboard.
-- **Exit gate:** for each supported (input, output) pair, converting produces a
-  file that a second decoder reads back with the expected dimensions and
-  format, and that `tikray view` displays as the same picture. Attempting an
-  unsupported pair — whatever OQ-2 settles SVG-out to be — fails with the
-  documented message rather than writing a broken file. Refusing to overwrite
-  an existing output without a flag is part of the gate.
-- **Close-out:** adds `rules/convert.md`; updates `rules/core-pipeline.md` with
-  the encode edge and the format matrix.
+- **Scope:** `tikray convert [--format <fmt>] [--overwrite] <in> <out>`. Encodes
+  the same buffer Phases 1–2 fill, so every input type already supported is
+  convertible on arrival — verified, not assumed: `DynamicImage::write_to` routes
+  through `make_compatible_img`, so Rgb8, Rgba8 and Rgb16 all encode to PNG and
+  JPEG without error. **The input allowlist does not change**; this phase adds an
+  *output* one (§2.12). OQ-2 and OQ-4 are resolved in §2.12 and §2.13 — they were
+  answered in the spec before this phase was cleared, which its round 1 enforced.
+
+  | File | Entry points |
+  |---|---|
+  | `src/convert.rs` | `pub enum Output { Png, Jpeg }`; `pub fn resolve(dest: &Path, over: Option<&str>) -> Result<Output, TikrayError>`; `pub fn flatten(img: &DynamicImage) -> RgbImage`; `pub fn encode(img: &DynamicImage, target: Output) -> Result<Vec<u8>, TikrayError>` |
+  | `src/error.rs` | `+ OutputUndetermined { path }`, `+ OutputNotAllowed { path, name }`, `+ OutputSvg { path }`, `+ OutputExists { path }`, `+ Write { path, source }` |
+  | `src/main.rs` | a `Convert { input, output, format, overwrite }` arm in `run` |
+  | `src/lib.rs` | `pub mod convert;` |
+
+  **`encode` is the pure seam**, as `src/display.rs:sequence` was for Phase 1 and
+  `src/svg.rs:rasterize` for Phase 2: buffer plus target in, bytes out, no
+  filesystem — which is what lets the gate assert on encoded bytes without
+  writing files. `flatten` is pure too, and separate, because §2.13's compositing
+  is the one arithmetic worth asserting on its own. `run`'s order is **resolve the
+  output, check the overwrite guard, load, encode, write**: both refusals are
+  cheap and come before the decode, so a run that cannot possibly succeed does no
+  work and touches no file.
+
+- **Exit gate:** seven items runnable by `cargo test` with no terminal, and one a
+  human checks. The blast radius is a new edge on the shared waist plus a second
+  subcommand, so item 7 is not optional.
+
+  1. **`resolve` reproduces §2.12.** `out.png` → `Png`; `out.PNG` → `Png`
+     (case-insensitive, confirmed); `out.jpg` and `out.jpeg` → `Jpeg`;
+     `--format jpeg` over a `.png` destination → `Jpeg`, so the override beats the
+     extension. `out.svg` → `OutputSvg`, **not** the `image` crate's
+     "not recognized as an image format" — that distinction is the evidence
+     §2.12's own type was used rather than `ImageFormat::from_path`. `out.gif` →
+     `OutputNotAllowed` naming GIF. `out`, with no `--format` → `OutputUndetermined`.
+  2. **Alpha is composited, not dropped (§2.13).** `flatten` maps
+     `[255, 0, 0, 128]` → `[255, 127, 127]` and `[0, 0, 0, 0]` → `[255, 255, 255]`.
+     End to end, a transparent-PNG-to-JPEG conversion reads back with **every
+     channel above 200** at that pixel. The threshold is deliberate and is the
+     item's whole design: JPEG is not byte-exact — measured, white returns as
+     `[255, 255, 243]` — while the bug it guards against returns `[0, 1, 0]`, so
+     the two are ~250 apart and no equality assertion is needed to separate them.
+     A literal here would be pinning the encoder's rounding instead.
+     **The success path's stderr is asserted here too**, not left to the human
+     item: `convert alpha.png out.jpg` exits **zero** and writes a non-empty
+     stderr naming the flattening (§2.13). Item 6 asserts stderr on the refusal
+     paths; this is the one the decision is actually about, and unlike "the
+     picture looks right" it is trivially machine-checkable.
+  3. **The waist is not quantized on the way out.** A 16-bit PNG fixture converted
+     to PNG reads back as **`Rgb16`** with the pixel `[65535, 1234, 7]` intact.
+     Under a `to_rgba8()` first — the one-liner an implementer reaches for at this
+     edge — it reads back `Rgba8` with `[65535, 1285, 0]` **compared in 16-bit
+     space** (the stored pixel is the 8-bit `[255, 5, 0, 255]`; 1234/257 = 5, and
+     5·257 = 1285 back up), and **both files report `format = Png` and
+     `dims = (2, 2)`**. So this item asserts colour type and
+     pixel, never dimensions and format, which is exactly the assertion §2.1 has
+     owed since Phase 1: it defends `DynamicImage` over RGBA8 by saying bit depth
+     is "material for Phase 3, whose gate reads the converted file back and
+     compares it", and a gate keyed to dimensions cannot cash that claim.
+  4. **Every allowed (input, output) pair round-trips.** Inputs `rgb.png`,
+     `rgb.jpg` and `icon24.svg` × outputs PNG and JPEG: the written file is
+     re-read by content sniffing (§2.8's construction, not by extension) at the
+     expected format and dimensions, and `src/load.rs:load` accepts it. That last
+     clause is what makes "and `tikray view` displays it" checkable **without a
+     terminal** — once `load` accepts the file, `view`'s only remaining step is
+     `sequence`, which Phase 1 item 2 already gates.
+  5. **The overwrite guard.** Converting onto an existing path fails with
+     `OutputExists` and leaves that file's bytes **byte-for-byte unchanged**;
+     with `--overwrite` it exits zero and the bytes change. The unchanged-bytes
+     half is the one worth asserting — a guard that errors *after* truncating
+     would pass a weaker check.
+  6. **Refusal writes no file and says why.** `convert x.png out.svg`,
+     `out.gif` and `out` each exit non-zero, write to stderr, and leave **no
+     file at the destination**. The SVG message names both readings (§2.12).
+  7. **Phases 1 and 2's gates still pass, unmodified.** All 27 assertions —
+     16 in `tests/gate.rs`, 11 in `tests/gate_phase2.rs` — green with no edits to
+     either file. Phase 3 adds an edge to the shared waist; this is what proves it
+     changed nothing behind it, and it is Phase 2's item 6 generalized.
+  8. **Human, in iTerm2:** convert a PNG, a JPEG and an SVG to each of PNG and
+     JPEG, open the results in a normal image viewer, and `tikray view` them —
+     they show the same picture, right way up, right colours. A transparent
+     source converted to JPEG comes out on **white**, not black, and the run says
+     on stderr that alpha was flattened. This is the observable's second half, and
+     no assertion above can confirm it: item 2 proves one pixel was composited,
+     not that a person opening the file sees the picture they expected.
+
+  New fixtures, **both pinned to an exact layout, because item 2's threshold is
+  layout-sensitive**: `deep16.png` is 2×2 16-bit RGB carrying `[65535, 1234, 7]`
+  at (0,0), and `alpha.png` is 2×2 RGBA laid out
+  `[255,0,0,128], [0,0,0,0], [255,0,0,128], [0,0,0,0]` — the same fixture every
+  number in §2.13's table was measured on. The pin is not tidiness: round 2
+  measured a *correct* flatten→JPEG on an 8×8 opaque-red-with-one-clear-corner
+  layout returning a min channel of **194**, which fails item 2's `> 200` bar. The
+  failure is only in the false-red direction, but a gate item that depends on a
+  fixture nobody wrote down is one an implementer can reproduce as broken.
+  (`alpha.svg` covers the vector path; `alpha.png` is the decode one.) Tests land
+  in `tests/gate_phase3.rs`; `tests/gate.rs` and `tests/gate_phase2.rs` are not
+  edited, which is item 7.
+
+- **Close-out:** adds `rules/convert.md`. Updates `rules/core-pipeline.md` with
+  the encode edge and the format matrix **and its frontmatter** — `src/convert.rs`
+  must join that file's `sources:`, or `/sync-rules` regenerates it without ever
+  reading the encode path, and it sits at **68/70 lines**, so `max_lines` needs
+  raising in the same edit. Updates `README.md` (the "Status: Phase 2" banner, the
+  Usage block, which lists only `view`, and the supported-formats table, which a
+  convert command makes incomplete) and `tikray.md`'s status line. `CLAUDE.md`
+  needs no change — §2.9's grammar is unaltered.
 
 ### Phase 4 — the TUI shell over the same core
 *Produces the observable: yes — images drawn inside a browsing UI. If OQ-1's

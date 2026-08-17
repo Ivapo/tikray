@@ -7,9 +7,10 @@ into a different format (ImageMagick).
 **Tikray** is Quechua for *to turn over / to translate* — it already spans both
 meanings.
 
-> **Status: Phase 3.** `tikray view` draws PNG, JPEG and SVG inline in iTerm2,
-> and `tikray convert` writes any of them back out as PNG or JPEG. The TUI shell
-> is specced but not built — see [`specs/INDEX.md`](specs/INDEX.md).
+> **Status: Phase 4.** `tikray view` draws PNG, JPEG and SVG inline in iTerm2,
+> `tikray convert` writes any of them back out as PNG or JPEG, and a bare
+> `tikray` opens a file browser that previews what you land on. Converting from
+> inside the browser is Phase 5 — see [`specs/INDEX.md`](specs/INDEX.md).
 
 ## Install
 
@@ -24,6 +25,9 @@ cargo install --path .
 ## Usage
 
 ```sh
+tikray                        # browse from here, previewing what you land on
+tikray <path>                 # browse from that path's directory, it highlighted
+
 tikray view <path>            # draw a PNG, JPEG or SVG inline
 tikray view --force <path>    # emit the escape sequence anyway (see below)
 
@@ -32,9 +36,13 @@ tikray convert --format jpeg <in> <out>   # ...or from --format, which wins
 tikray convert --overwrite <in> <out>  # replace <out> if it already exists
 ```
 
-`view` is required, and deliberately so. A bare `tikray <path>` is reserved for
-the TUI browser, so that `view` keeps meaning the one thing worth naming:
-*print it and give me my prompt back, don't take my screen.*
+The split is by **surface**, not by verb. A bare path opens the browser, not an
+inline draw, so that adding an argument never flips the output mode — and so
+that `view` keeps meaning the one thing worth naming: *print it and give me my
+prompt back, don't take my screen.*
+
+A first argument is a subcommand only when it matches one exactly, so a file
+actually named `view` is `tikray ./view`.
 
 There is something to point it at in [`samples/`](samples/) — a vector scene, the
 same scene converted to PNG and JPEG, a 24×24 icon and a transparent one. Each
@@ -51,7 +59,8 @@ tikray view samples/landscape.svg
 |---|---|
 | **Input formats** | PNG, JPEG, SVG |
 | **Output formats** | PNG, JPEG |
-| **Terminal** | iTerm2 only |
+| **Surfaces** | inline one-shot (`view`), a file (`convert`), a browser |
+| **Terminal** | iTerm2 only to *see* anything; `convert` needs no terminal |
 
 Input format is detected from the file's **contents**, not its extension: a PNG
 named `.txt` displays fine, and a text file named `.png` is refused as an
@@ -92,6 +101,23 @@ second stops another terminal from printing them at you.
 Both checks have known false negatives — plain tmux breaks them, as can an
 unrecognized iTerm2-compatible terminal — so `--force` skips both and emits
 anyway.
+
+### Browsing
+
+`tikray` opens a file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`)
+move, `⏎` (or `→`) enters a directory, `←` goes back up, and `q` quits. The
+highlighted image is drawn in the pane, scaled to it by the same rule below.
+
+**The preview is not a widget** — it is an image drawn behind a hole in the
+layout, which is why the pane is deliberately empty and why the rest of the
+screen never overlaps it. Where there is nothing to draw, the pane says why in
+one line rather than going blank: a directory, a file that is not an image, a
+terminal that is not iTerm2, or one that does not report its size in pixels.
+**In every one of those the browser still runs** — the file list is useful on
+its own. The one refusal is stdout not being a terminal, since then there is no
+screen to browse in at all.
+
+Converting from inside the browser is not built yet.
 
 ### Converting
 
@@ -148,7 +174,8 @@ person looking at the screen see the right picture?* That half cannot be
 asserted, so it is a script instead of a test.
 
 ```sh
-bash scripts/gate8.sh    # Phase 3's item 8 — needs iTerm2, asks you questions
+bash scripts/gate8.sh          # Phase 3's item 8 — needs iTerm2, asks you questions
+bash scripts/gate-phase4.sh    # Phase 4's items 6 and 7 — same
 ```
 
 ## License

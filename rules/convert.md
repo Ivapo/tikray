@@ -7,8 +7,8 @@ covers: >
   the output allowlist as a two-variant type, how the target format is resolved
   and why not through the image crate, the composite-onto-white arithmetic and
   the note that announces it, and the order run takes its two cheap refusals in
-max_lines: 55
-generated: 2026-08-16
+max_lines: 60
+generated: 2026-08-17
 ---
 
 # Convert
@@ -62,3 +62,8 @@ encode, write**, so a run that cannot possibly succeed does no work and touches
 no file. Its one visible consequence is deliberate: `convert missing.png
 existing.png` reports `OutputExists`, not `Io`. There is no tty check on this
 path — convert writes a file, not escape bytes.
+
+`run` dispatches three surfaces now, and this arm is the **CLI** one. That is
+what the stderr note belongs to: inside the TUI's alternate screen an
+`eprintln!` writes over the display, so converting from there is a separate
+problem and not yet solved.

@@ -58,11 +58,13 @@ clear.
 - [ ] Decode PNG/JPEG via `image`, rasterize SVG via `resvg`
 - [ ] Display decoded image inline via iTerm2 OSC 1337 protocol
 - [ ] Export/save any input format to PNG or JPEG
-- [ ] TUI shell (Ratatui) for browsing/opening files, not just a one-shot CLI
+- [x] TUI shell (Ratatui) for browsing/opening files, not just a one-shot CLI
 - [ ] CLI mode for scripting (`tikray view file.svg`, `tikray convert file.svg file.png`)
 
 ## Status
 
-Phases 1-3 of `tkr-001` built: `tikray view` draws PNG, JPEG and SVG inline in
-iTerm2, and `tikray convert` writes any of them back out as PNG or JPEG.
+Phases 1-4 of `tkr-001` built: `tikray view` draws PNG, JPEG and SVG inline in
+iTerm2, `tikray convert` writes any of them back out as PNG or JPEG, and a bare
+`tikray` browses files with a live preview. Phase 5 — converting from inside
+the browser — is specced and not built.
 Per-phase state lives in `specs/INDEX.md`; current behaviour lives in `rules/`.

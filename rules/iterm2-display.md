@@ -5,9 +5,10 @@ sources:
   - src/term.rs
 covers: >
   the OSC 1337 argument string, the fit-down-never-up sizing arithmetic, the
-  viewport query, and iTerm2 detection with its --force override
-max_lines: 50
-generated: 2026-08-16
+  viewport and cell-geometry queries, and iTerm2 detection with its --force
+  override
+max_lines: 60
+generated: 2026-08-17
 ---
 
 # iTerm2 display
@@ -48,12 +49,20 @@ defensive: `(10,3)` into `(1,100)` computes `round(0.3) = 0`, and a zero
 dimension is not legal. `None` in means the viewport was unreported; `None` out
 means emit `width=auto;height=auto`, which never upscales either.
 
-## Viewport and detection
+## Viewport, cell geometry, and detection
 
 `src/term.rs:viewport` reads `crossterm::terminal::window_size()` and treats an
 error, or a `0` in either pixel axis, as unreported — what crossterm documents
 rather than a hedge: the pixel fields may default to 0, unix documents them as
 unused, and Windows does not implement them.
+
+`src/term.rs:geometry` is the same query for a caller that needs **cells** as
+well, and returns both pairs from one call because two reads can straddle a
+resize. `src/term.rs:cell_size` divides them, and is pure for the reason `fit`
+is: the four integers are injected, so the gates run with no terminal. A zero in
+any of them, or a quotient that truncates to zero, is the same "unreported" the
+viewport rule uses. Only `rules/tui.md`'s pane sizing needs it — `view` owns the
+whole window and never divides.
 `src/term.rs:detect_iterm2` requires both a tty on stdout and one of
 `TERM_PROGRAM=iTerm.app` or `LC_TERMINAL=iTerm2`; the two survive different
 things (the latter an ssh hop, neither plain tmux). `--force` skips both, because

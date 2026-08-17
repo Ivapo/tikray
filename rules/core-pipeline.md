@@ -6,12 +6,15 @@ sources:
   - src/svg.rs
   - src/convert.rs
   - src/error.rs
+  - src/cli.rs
+  - src/tui.rs
 covers: >
   the DynamicImage waist, the content-sniffing load path, the raster and vector
   branches behind it, the per-phase input allowlist, the two output edges and
-  the format matrix, and the error taxonomy the CLI renders to stderr
-max_lines: 90
-generated: 2026-08-16
+  the format matrix, the two callers over one core, and the error taxonomy the
+  CLI renders to stderr
+max_lines: 100
+generated: 2026-08-17
 ---
 
 # Core pipeline
@@ -20,6 +23,16 @@ Every capability is the same pipeline with a different edge enabled:
 **decode-or-rasterize → one in-memory buffer → display-or-encode.** As of Phase 3
 all four edges exist: raster decode and SVG rasterization in, the terminal and a
 file out.
+
+## Two callers, one core
+
+`src/lib.rs` is a library with the CLI as one caller, not a binary with helpers,
+and as of Phase 4 the second caller exists: `src/main.rs:run` dispatches
+`src/cli.rs:Command` for the one-shot surfaces and `src/tui.rs:run` for the
+browsing one. Both reach `src/load.rs:load` and the same waist; the TUI differs
+only in the last step, sizing to a pane rather than the window — see
+`rules/tui.md`. Nothing below this line knows which caller it is serving, which
+is the claim the split was made for rather than one asserted after the fact.
 
 ## The waist is `DynamicImage`
 

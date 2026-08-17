@@ -11,7 +11,7 @@ note: >
 phases:
   - name: "Phase 1 — view a raster image inline in iTerm2"
     reviewed: 2026-08-16
-    shipped: null
+    shipped: 2026-08-16
     cut: null
     by: null
   - name: "Phase 2 — view an SVG, by rasterizing into the same buffer"
@@ -223,6 +223,14 @@ it deliberately, and gate item 5 requires the measurement to be *recorded* —
 because if it fires here, Phase 2 inherits the problem (an SVG has no inherent
 size to rasterize at) and that is worth knowing one phase early.
 
+**CORRECTED 2026-08-16 — it did not fire.** Phase 1's gate item 5 measured
+`window_size()` reporting real pixels in iTerm2 on this machine: a 64×48 source
+emitted `width=64px;height=48px`. So the `px` branch is the primary path, and
+Phase 2 has a viewport to rasterize an SVG against. The paragraph above is kept
+because its *reasoning* still holds — the `auto` branch stays reachable and is
+exercised by every run without a controlling terminal, including `cargo test`'s
+— but a Phase 2 implementer should not plan around it as the common case.
+
 The whole of this subsection is a pure function of four integers, which is what
 makes Phase 1's gate machine-checkable at all (§4, Phase 1).
 
@@ -336,8 +344,15 @@ place that can enforce it.
   passes the allowlist: what `image`'s default decode path yields for one — first
   frame, default image, or an error — is unverified, and Phase 1 neither claims
   nor gates it.
-- **OQ-7** — Are `window_size()`'s pixel fields **device pixels or display
-  points?** §2.6 compares image pixels against them as though they were the
+- **OQ-7** — ~~Are `window_size()`'s pixel fields **device pixels or display
+  points?**~~ **RESOLVED — measured at Phase 1's gate, 2026-08-16: device
+  pixels.** An image wider than the window occupied approximately the full
+  window width in iTerm2 on a Retina Mac, which is the signature §2.6's
+  arithmetic requires. No divisor is needed, and Phase 2 does not inherit the
+  problem. The original reasoning is kept because the *method* is the part worth
+  preserving: this was invisible to every machine-checkable item in the gate,
+  and only a human looking at the screen could have caught it.
+  §2.6 compares image pixels against them as though they were the
   same unit. iTerm2's protocol documentation notes that Retina displays were
   "properly supported" from 3.2.0, "previously they would be double-size (one
   display 'point' per image pixel rather than one display pixel per image

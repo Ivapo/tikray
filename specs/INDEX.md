@@ -2,5 +2,5 @@
 
 # Specs
 
-- **[tikray](tikray_spec.md)** — `tkr-001` · accepted · pending
+- **[tikray](tikray_spec.md)** — `tkr-001` · accepted · partial
   A single Rust binary that shows an image inline in iTerm2 and writes it back out in another format — the decode/rasterize/encode core, the OSC 1337 display path, the convert command, and the TUI shell over the same core.

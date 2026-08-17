@@ -25,6 +25,11 @@ phases:
     cut: null
     by: null
   - name: "Phase 4 — the TUI shell over the same core"
+    reviewed: 2026-08-17
+    shipped: null
+    cut: null
+    by: null
+  - name: "Phase 5 — convert from inside the TUI"
     reviewed: null
     shipped: null
     cut: null
@@ -583,11 +588,11 @@ encoder's rounding.
 
 ### 2.14 The image is not in Ratatui's model; it survives by not being painted over *(decision, recorded — resolves OQ-1)*
 
-Run 2026-08-17 in iTerm2, against `ratatui` 0.30.2 (feature `crossterm_0_29`, so
-one crossterm instance owns raw mode) calling `src/display.rs:sequence` through a
-path dependency — **the shipped display path, not a reimplementation of it**,
-because the question is whether *tikray's* sequence survives, not whether some
-sequence does. Nine repaints, one keypress each:
+Run 2026-08-17 in iTerm2, against `ratatui` 0.30.2 calling
+`src/display.rs:sequence` through a path dependency — **the shipped display path,
+not a reimplementation of it**, because the question is whether *tikray's*
+sequence survives, not whether some sequence does. Nine repaints, one keypress
+each:
 
 | Repaint | Image |
 |---|---|
@@ -635,6 +640,26 @@ with no cell geometry there is no pane size, and `width=auto` is precisely row 8
 So that terminal either draws no image in the TUI or accepts the spill, and which
 one is a Phase 4 decision. `view` is unaffected; it owns the whole window, which
 is what makes `auto` fine there and not here.
+
+**How the bytes are placed, since `sequence` returns no positioning and Ratatui's
+`Frame` offers no raw-write escape.** The spike moved the cursor with
+crossterm's `MoveTo(area.x, area.y)` on the same stdout the backend writes to,
+wrote `sequence`'s bytes, and flushed — *after* `terminal.draw` returned, so the
+backend's own flush had already landed. This is what "reserve a pane, render
+nothing into it" costs in practice: the image is written outside Ratatui's
+writer, and the ordering (draw, then place) is load-bearing rather than
+incidental.
+
+**Two corrections to how this subsection was first written**, both checked
+against the crate rather than assumed. `ratatui-crossterm`'s `default` feature
+**already selects `crossterm_0_29`**, so a plain `ratatui = "0.30"` produces one
+crossterm instance on its own — the explicit feature the spike named is
+belt-and-braces, not the thing that avoided a duplicate. And the spike was
+throwaway: it left **no artifact in the repo**, so its nine rows are not
+re-runnable by a second person. Its two load-bearing numbers do re-derive
+(2528/158 = 16, 1584/44 = 36), which is why the claim stands, but that is a
+weaker guarantee than Phases 1–3's gates carry and is recorded rather than
+papered over.
 
 ## 3. Open questions
 
@@ -1030,26 +1055,175 @@ and looks right.*
   needs no change — §2.9's grammar is unaltered.
 
 ### Phase 4 — the TUI shell over the same core
-*Produces the observable: yes — images drawn inside a browsing UI. If OQ-1's
-spike shows the protocol and Ratatui cannot share a screen, this phase is
-re-specced or cut before it is built; it is last precisely so that answer costs
-nothing already shipped.*
+*Produces the observable: yes — images drawn inside a browsing UI.*
+
+**The OQ-1 spike this phase used to open with is done (§2.14), and the cut
+branch it guarded can no longer fire.** The phase originally read "begins with
+the OQ-1 spike" and "if the protocol and Ratatui cannot share a screen, this
+phase is re-specced or cut". They can share a screen, measured, so the spike is
+not step 1 and the phase is not conditional. §2.14 is the input this scope is
+written against.
 
 - **Scope:** a Ratatui + crossterm file browser that opens what it lands on
-  through the Phase 1–3 core, plus a key to convert the selected file. Begins
-  with the OQ-1 spike; its result is recorded in §2 as a decision before any UI
-  work. **Owns both TUI entry points — bare `tikray` and `tikray <path>`
-  (§2.9)** — including which of the two readings a `<file>` argument takes,
-  which §2.9 reserves rather than settles.
-- **Exit gate:** launching `tikray` with no arguments opens the browser,
-  arrow-key navigation shows the highlighted image, and quitting restores the
-  terminal to a clean state (no residual alternate screen, no swallowed cursor,
-  no leaked escape state) after both a normal quit and a `SIGINT`.
-  `tikray <path>` opens the same browser positioned at that path, and
-  `tikray view <path>` still draws inline and exits — the two surfaces stay
-  distinguishable, which is the whole of §2.9.
-- **Close-out:** adds `rules/tui.md`; updates the `CLAUDE.md` stanza if the
-  entry point changes.
+  through the Phase 1–3 core. **Owns both TUI entry points — bare `tikray` and
+  `tikray <path>` (§2.9).** Converting from inside the TUI is **Phase 5**, not
+  this phase (see there for why).
+
+  | File | Entry points |
+  |---|---|
+  | `src/cli.rs` | `pub struct Cli` + `pub enum Command`, **moved out of `src/main.rs`** so gate item 3 can parse argv without running a TUI |
+  | `src/tui.rs` | `pub fn run(start: Option<&Path>) -> Result<(), TikrayError>`; `pub fn pane_viewport(pane: (u16,u16), cell: Option<(u32,u32)>) -> Option<(u32,u32)>`; `pub fn pane_sequence(img: &DynamicImage, pane: (u16,u16), cell: Option<(u32,u32)>) -> Result<Option<Vec<u8>>, TikrayError>` — `Ok(None)` means *draw the explanation and emit nothing* |
+  | `src/term.rs` | `+ pub fn geometry() -> Option<((u32,u32), (u16,u16))>` — the reader; `+ pub fn cell_size(px: (u32,u32), cells: (u16,u16)) -> Option<(u32,u32)>` — the arithmetic, pure |
+  | `src/error.rs` | `+ Tui { source: std::io::Error }` |
+  | `src/main.rs` | dispatch only: no subcommand → `tui::run(None)`; a bare path → `tui::run(Some(p))` |
+  | `src/lib.rs` | `pub mod cli; pub mod tui;` |
+  | `Cargo.toml` | `ratatui = "0.30"` (0.30.2 current; its `crossterm_0_29` default already matches §2.4's crossterm — §2.14), `signal-hook = "0.3"` (0.3.18 current) |
+
+  **`src/display.rs:display` is not used by this phase and `sequence` is** — it
+  reads the whole-window viewport, and a pane is not the window (§2.14). The TUI
+  calls `sequence` with pane pixels and places the bytes itself.
+
+  **`term::geometry` and `term::cell_size` are two functions on purpose**, and
+  the split is Phase 1's, not a new one: `src/term.rs:viewport` reads the
+  terminal and takes no arguments, `src/display.rs:fit` is pure with the value
+  injected, and that is the only reason Phase 1's gate runs headless. A single
+  zero-argument `cell_size()` would have to call `window_size()` itself, which
+  returns `Err` under `cargo test`, and gate item 1 could then never reach its
+  assertion. `geometry` returns **both** pairs from **one** `window_size()` call
+  rather than exposing a second reader beside `viewport`, because two separate
+  reads can straddle a resize and yield a cell size that never existed.
+
+  **Three decisions this scope settles, because an implementer cannot guess
+  them:**
+
+  1. **The clap tree.** `src/main.rs:Cli` is `command: Command`, non-optional
+     with no positional, so `tikray` and `tikray x.png` both exit **2** today —
+     verified. It becomes `command: Option<Command>` plus `path:
+     Option<PathBuf>`. The collision this creates is a file named `view` or
+     `convert`: **a bare first argument is a subcommand when it exactly matches
+     one, and a path otherwise**, with `./view` as the escape hatch. Stated
+     because it is a rule, not a default.
+  2. **What `tikray <path>` opens** — §2.9 reserved this rather than settling
+     it. **The browser at that path's directory, with the path highlighted**;
+     given a directory, the browser there with its first entry highlighted. Not
+     a single-image view, because that is `view`'s job and §2.9's whole point is
+     that the two surfaces stay distinguishable.
+  3. **What happens when `cell_size()` is `None`** — §2.14 reserved this. **The
+     TUI runs and draws no image**, showing one line in the pane saying why.
+     Not `auto`: that is §2.14's row 8, which spills across the layout, and a
+     browser that wrecks its own screen is worse than one without previews.
+     Refusing to launch is worse still — the file list is useful on its own.
+
+- **Exit gate:** five items runnable by `cargo test` with no terminal, and two a
+  human checks. The blast radius is a second caller of the core (§2.2) plus a
+  dependency that co-owns crossterm with `src/term.rs`, so item 4 is not
+  optional.
+
+  1. **`cell_size` reproduces §2.14's arithmetic.**
+     `cell_size((2528, 1584), (158, 44))` → `Some((16, 36))`. A zero in **any**
+     of the four → `None`, which is §2.6's unreported rule extended to the two
+     new fields. The four integers are arguments, which is what lets this run
+     with no terminal; `geometry` is the half that reads one and is exercised by
+     item 6.
+  2. **`pane_viewport` turns cells into pixels.** A 40×20 pane at `(16, 36)` →
+     `(640, 720)`, and `sequence` on a 1200×800 buffer with that viewport emits
+     exactly `width=640px;height=427px` — `fit`'s clamp applied to a pane rather
+     than a window, which is the one place Phase 4 touches shipped arithmetic.
+     `cell` of `None` → `None`, which is item 5's input. **And a zero in either
+     pane axis → `None` too**: a pane shrunk to nothing under a bordered layout
+     otherwise multiplies out to `(0, …)`, `src/display.rs:fit` returns `None`
+     for a zero axis, and `sequence` then emits `width=auto;height=auto` — which
+     is §2.14's row 8 reached from the other side, and the one path by which the
+     spill decision 3 forbids can still get in. Asserted rather than inherited.
+  3. **The clap tree parses all four invocations**, via `Cli::try_parse_from`
+     with no TUI: `["tikray"]` → no subcommand, no path; `["tikray", "a.png"]` →
+     path, no subcommand; `["tikray", "view", "a.png"]` → `View`; `["tikray",
+     "convert", "a.png", "b.jpg"]` → `Convert`. **And `["tikray", "view"]` is an
+     error, not a bare path named `view`** — that is decision 1 being pinned
+     rather than described.
+  4. **Phases 1–3's gates still pass, unmodified.** All 39 assertions — 16 in
+     `tests/gate.rs`, 11 in `tests/gate_phase2.rs`, 12 in `tests/gate_phase3.rs`
+     — green with no edits to any of the three. This is Phase 3's item 7
+     generalized again, and it matters more here: this phase moves `Cli` out of
+     `src/main.rs` and adds a crate that co-owns crossterm.
+  5. **The no-pixel fallback emits nothing.** `pane_sequence(img, pane, None)`
+     returns `Ok(None)` — **zero escape bytes** — so the pane draws decision 3's
+     explanation instead. With a `cell` of `Some((16, 36))` the same call returns
+     `Ok(Some(bytes))` carrying item 2's arguments, so one function covers both
+     branches. Asserted on it as a pure function because the failure it guards is
+     §2.14's row 8, and a spilled image is not something a test can see.
+  6. **Human, in iTerm2:** `tikray` opens the browser; arrow-key navigation
+     redraws the highlighted image; `tikray <path>` opens at that path's
+     directory with it highlighted; `tikray view <path>` still draws inline and
+     exits. Quitting restores the terminal — no residual alternate screen, no
+     swallowed cursor, no leaked escape state. **And the named visual property,
+     which is the whole reason this item is human: the image sits inside its
+     pane and does not cross the border**, including while the window is
+     resized. §2.14's headline hazard is a spill, item 5 says outright that no
+     test can see one, so this is the only place it is caught — and Phases 1–3
+     each named their human item's property this specifically rather than
+     asking whether it "looks right".
+  7. **Human: the terminal survives both interruptions, which are two different
+     mechanisms.** crossterm 0.29's raw mode goes through `cfmakeraw`, which
+     clears `ISIG` — so **Ctrl-C inside the TUI arrives as a `KeyEvent`, not a
+     signal**, and is handled as quit. A real `kill -INT <pid>` *is* a signal,
+     default-terminates without unwinding, and so runs no `Drop`: that is what
+     `signal-hook` is pinned for. Both are checked, because a gate saying only
+     "after a `SIGINT`" does not distinguish them and the two need different
+     code. A `Drop` guard plus a panic hook covers normal quit and panic.
+
+  Tests land in `tests/gate_phase4.rs`; the three existing gate files are not
+  edited, which is item 4. Items 6–7 ship as `scripts/gate-phase4.sh`, following
+  `scripts/gate8.sh` — a gate someone else could check is the point of a gate.
+
+- **Close-out:** adds `rules/tui.md`. **Three existing rules change, and two need
+  frontmatter edits in the same pass or `/sync-rules` regenerates them against
+  sources they never declared:**
+
+  | Rule | Why it changes | Frontmatter |
+  |---|---|---|
+  | `rules/iterm2-display.md` | `sources` are `src/display.rs` **and `src/term.rs`** — both touched | at **50/50**, so `max_lines` must rise |
+  | `rules/core-pipeline.md` | the second caller §2.2 exists for; `src/lib.rs` in `sources` | at **88/90**, so `max_lines` must rise, **and `src/tui.rs` + `src/cli.rs` join `sources`** |
+  | `rules/convert.md` | its `sources` include **`src/main.rs`**, which this phase restructures — `Cli` moves out and two dispatch arms are added, and its `covers` names "the order `run` takes its two cheap refusals in" | at 52/55, no raise needed |
+
+  Updates `README.md` — the "Status: Phase 3" banner and the Usage block, which
+  lists only `view` and `convert` — and `tikray.md`'s status line and its
+  unticked "TUI shell (Ratatui)" item. **`CLAUDE.md` needs no change** unless
+  decision 1 alters the grammar §2.9 records, which it does not.
+
+### Phase 5 — convert from inside the TUI
+*Produces the observable: yes — the observable's second half, reached from the
+browsing surface.*
+
+**Split out of Phase 4 by its round 1, for a reason worth keeping.** Phase 4 read
+"plus a key to convert the selected file", one clause, gated by nothing — and it
+hides a decision the rest of the spec actively contradicts. **§2.13 requires the
+alpha-flattening notice, and puts it in `src/main.rs:run` as an `eprintln!`
+because `encode` is the pure seam. Inside an alternate screen, stderr writes
+straight over the TUI.** Phase 3's gate item 2 asserts that line, so it cannot
+quietly be dropped; it has to go somewhere else, and *where* is a decision, not a
+bullet. Phase 4 was also already the largest phase in the spec against §3's "one
+phase = one plan-mode pass".
+
+- **Scope:** a key in the browser that converts the highlighted file. Settles,
+  because none of it is inferable: **where the output lands** (destination path
+  rule), **how the target format is chosen** (a prompt, or a fixed pair of
+  keys), **what replaces `--overwrite`** now that there is no flag, and **where
+  §2.13's flattening notice is surfaced** now that stderr is unusable. It calls
+  `src/convert.rs:resolve` and `src/convert.rs:encode` directly rather than
+  `src/main.rs:run`, since `run` is the CLI caller and owns the `eprintln!`.
+- **Exit gate**, three items its own round is expected to sharpen and add to —
+  **not** a placeholder, because §3 requires every phase to carry one:
+  1. The flattening notice reaches a human **without leaving the TUI**, on the
+     same condition §2.13 states — the buffer *having* an alpha channel, not any
+     pixel being transparent. `eprintln!` is unavailable inside the alternate
+     screen, so this is the item the phase exists to answer.
+  2. The overwrite guard still refuses, leaving the destination **byte-for-byte
+     unchanged** — Phase 3's item 5, restated at a surface with no `--overwrite`
+     flag to carry it.
+  3. Phases 1–4's gates still pass, unmodified.
+- **Close-out:** updates `rules/tui.md` and `rules/convert.md`; updates
+  `README.md`'s TUI section with the key and the destination rule.
 
 <!--
 The review record is a sibling file, not a section: it lives at

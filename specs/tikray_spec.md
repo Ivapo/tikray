@@ -2,7 +2,7 @@
 id: tkr-001
 title: tikray
 status: accepted
-last_updated: 2026-08-16
+last_updated: 2026-08-17
 note: >
   A single Rust binary that shows an image inline in iTerm2 and writes it back
   out in another format — the decode/rasterize/encode core, the OSC 1337
@@ -568,17 +568,78 @@ the *distinction* — a flattened pixel is near-white, a dropped-alpha one is
 near-black, some 250 apart — rather than an equality that would be pinning the
 encoder's rounding.
 
+### 2.14 The image is not in Ratatui's model; it survives by not being painted over *(decision, recorded — resolves OQ-1)*
+
+Run 2026-08-17 in iTerm2, against `ratatui` 0.30.2 (feature `crossterm_0_29`, so
+one crossterm instance owns raw mode) calling `src/display.rs:sequence` through a
+path dependency — **the shipped display path, not a reimplementation of it**,
+because the question is whether *tikray's* sequence survives, not whether some
+sequence does. Nine repaints, one keypress each:
+
+| Repaint | Image |
+|---|---|
+| emitted into a bordered pane, sized to it | drew, inside the border |
+| an identical frame (diff writes nothing) | survived |
+| a counter changed **outside** the pane | survived |
+| a widget drawing text **inside** the pane | **overwritten**, where the widget's cells landed |
+| re-emit | restored |
+| `terminal.clear()` + full redraw | gone |
+| re-emit | restored |
+| emitted at **natural size**, ignoring the pane | **spilled across both panes** |
+| full redraw | recovered |
+
+**The mechanism is the finding, not the yes.** Ratatui diffs and writes *cells*;
+it has no notion of a region it must leave alone. The image survives because the
+cells under it stay blank between frames and the diff therefore says nothing
+about them — it is not an image widget, it is an image behind a hole in the
+layout. Row 4 is what proves this: it died when a widget claimed those cells, not
+merely because a frame was drawn. So **Phase 4's rule is: reserve a pane, render
+nothing into it, and re-emit whenever the frame is invalidated** — by `clear()`,
+by a resize, or by any frame that covers those cells.
+
+**`src/display.rs:display` is not reusable inside the TUI; `sequence` is.** Row 8
+measured why: at natural size the image spilled over the border and across the
+neighbouring pane, because OSC 1337 draws at the cursor and iTerm2 clips it to
+nothing. `display` reads the whole-window viewport from `src/term.rs:viewport`,
+and a pane is not the window. Phase 4 calls `sequence` with pane-relative pixels
+instead. That is Phase 1's pure seam paying off a second time — the same property
+that made the gate runnable without a terminal is what makes the function
+reusable under a different consumer.
+
+**Cell geometry is arithmetic §2.6 never needed**, because it sizes to the whole
+window and so never divided. Measured here: `window_size()` reports 2528×1584 px
+over 158×44 cells → **16×36 px per cell**, and a pane of `w×h` cells is the
+viewport `16w × 36h`. Two notes an implementer wants. The division is integer and
+**truncates, which is the safe direction** — an underestimate leaves the image
+slightly inside its pane, where an overestimate reproduces row 8 at small scale.
+And it divided evenly on this machine, which will not always be true, so the
+truncation is a live path rather than a formality. (16×36 for one cell is the
+device-pixel signature OQ-7 recorded, seen from the other side.)
+
+**Reserved for Phase 4, named so it is not discovered:** what the TUI does when
+`window_size()` reports no pixels. §2.6's `auto` fallback is *unusable* here —
+with no cell geometry there is no pane size, and `width=auto` is precisely row 8.
+So that terminal either draws no image in the TUI or accepts the spill, and which
+one is a Phase 4 decision. `view` is unaffected; it owns the whole window, which
+is what makes `auto` fine there and not here.
+
 ## 3. Open questions
 
-- **OQ-1** — Can OSC 1337 inline images coexist with a Ratatui full-screen
+- **OQ-1** — ~~Can OSC 1337 inline images coexist with a Ratatui full-screen
   alternate-screen TUI, or does the image have to be drawn outside Ratatui's
   buffer model (which repaints cells and would erase or clip it)? If they
   cannot, Phase 4's shape changes: either a split where Ratatui browses and the
   image is drawn on suspend, or no alternate screen at all.
   *(deferred by evidence — settle it with a spike at the top of Phase 4, not by
-  argument now)* **§2.9's grammar rides on this**: `tikray <path>` is defined as
+  argument now)*~~ **RESOLVED 2026-08-17 by the spike — §2.14. They coexist**,
+  and neither fallback is needed. The question's own framing conflated two
+  things the spike separates: Ratatui repaints *cells*, not regions, so the
+  image is never "erased by a repaint" as such — it survives exactly as long as
+  no widget claims the cells under it, and it does not clip, it **spills**.
+  **§2.9's grammar rides on this**: `tikray <path>` is defined as
   the TUI, so if Phase 4 is cut or re-shaped the bare-path form falls back to
-  `view`'s inline behaviour rather than being left undefined.
+  `view`'s inline behaviour rather than being left undefined. It is not cut, so
+  the grammar stands as written.
 - **OQ-2** — ~~What does "convert to SVG" mean? The seed document promises "any of
   the above into any of the others", but raster→SVG is not a format change: it
   is either vectorization/tracing (a different and much larger project) or

@@ -24,6 +24,10 @@ tikray view <path>            # draw a PNG or JPEG inline
 tikray view --force <path>    # emit the escape sequence anyway (see below)
 ```
 
+`view` is required, and deliberately so. A bare `tikray <path>` is reserved for
+the TUI browser, so that `view` keeps meaning the one thing worth naming:
+*print it and give me my prompt back, don't take my screen.*
+
 ### What it supports today
 
 | | |

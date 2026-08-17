@@ -300,6 +300,50 @@ rather than a silent success on a format no phase has gated. This is §2.4's
 "supported versus incidentally working" claim being made honestly, in the one
 place that can enforce it.
 
+### 2.9 CLI grammar: the TUI is the default surface, `view` is the opt-in one-shot *(decision, recorded)*
+
+Four invocations. The split is by **surface**, not by verb:
+
+| Invocation | Surface | Phase |
+|---|---|---|
+| `tikray view [--force] <path>` | inline, one-shot, returns to the prompt | 1 |
+| `tikray convert <in> <out>` | no display; writes a file | 3 |
+| `tikray` | TUI browser | 4 |
+| `tikray <path>` | TUI browser, starting there | 4 |
+
+**A bare path opens the TUI rather than drawing inline.** The alternative —
+`tikray <path>` as a synonym for `tikray view <path>` — was considered and
+rejected on two counts. It would make *adding an argument flip the entire output
+mode*, where `tikray` and `tikray <path>` both reaching the browser is the
+`vim` / `vim file` shape a path argument already implies. And it would make
+`view` pure noise, a synonym existing only for symmetry with `convert`; under
+this grammar `view` carries the one distinction that matters — *print it and give
+me my prompt back, don't take my screen* — which is the smaller vocabulary §1
+asks for, not the larger one.
+
+**`tikray <path>` therefore does not exist before Phase 4**, and Phase 1
+requiring the `view` subcommand is not a stopgap. Shipping a bare-path form
+earlier would mean it meant "inline" then and "TUI" later: shipped behaviour
+contradicted by a later phase, which is the one shape the methodology says is
+never a phase.
+
+**Convert stays a subcommand, not a `--convert` flag.** It takes two positionals
+plus a format override and an overwrite guard (Phase 3's gate names the latter).
+As a flag, `--convert` would silently govern how many positionals are legal and
+what each one means, which the parser cannot validate and which degrades exactly
+the error messages a user needs. §2.4 bought `clap` for subcommands; this is
+that purchase being used.
+
+**This decision depends on OQ-1.** If the spike shows OSC 1337 and a Ratatui
+alternate screen cannot share a terminal, Phase 4 changes shape or is cut — and
+`tikray <path>` goes with it, the fallback being that it inherits `view`'s inline
+behaviour after all. Recorded here so that outcome is a known branch rather than
+a rediscovery.
+
+Whether `tikray <file>` opens the browser at that file's directory with it
+highlighted, or a single-image view, is **reserved for Phase 4** — named so it is
+not forgotten, not designed before there is a consumer.
+
 ## 3. Open questions
 
 - **OQ-1** — Can OSC 1337 inline images coexist with a Ratatui full-screen
@@ -308,7 +352,9 @@ place that can enforce it.
   cannot, Phase 4's shape changes: either a split where Ratatui browses and the
   image is drawn on suspend, or no alternate screen at all.
   *(deferred by evidence — settle it with a spike at the top of Phase 4, not by
-  argument now)*
+  argument now)* **§2.9's grammar rides on this**: `tikray <path>` is defined as
+  the TUI, so if Phase 4 is cut or re-shaped the bare-path form falls back to
+  `view`'s inline behaviour rather than being left undefined.
 - **OQ-2** — What does "convert to SVG" mean? The seed document promises "any of
   the above into any of the others", but raster→SVG is not a format change: it
   is either vectorization/tracing (a different and much larger project) or
@@ -501,11 +547,16 @@ nothing already shipped.*
 - **Scope:** a Ratatui + crossterm file browser that opens what it lands on
   through the Phase 1–3 core, plus a key to convert the selected file. Begins
   with the OQ-1 spike; its result is recorded in §2 as a decision before any UI
-  work.
+  work. **Owns both TUI entry points — bare `tikray` and `tikray <path>`
+  (§2.9)** — including which of the two readings a `<file>` argument takes,
+  which §2.9 reserves rather than settles.
 - **Exit gate:** launching `tikray` with no arguments opens the browser,
   arrow-key navigation shows the highlighted image, and quitting restores the
   terminal to a clean state (no residual alternate screen, no swallowed cursor,
   no leaked escape state) after both a normal quit and a `SIGINT`.
+  `tikray <path>` opens the same browser positioned at that path, and
+  `tikray view <path>` still draws inline and exits — the two surfaces stay
+  distinguishable, which is the whole of §2.9.
 - **Close-out:** adds `rules/tui.md`; updates the `CLAUDE.md` stanza if the
   entry point changes.
 

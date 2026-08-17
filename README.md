@@ -7,9 +7,9 @@ into a different format (ImageMagick).
 **Tikray** is Quechua for *to turn over / to translate* — it already spans both
 meanings.
 
-> **Status: Phase 2.** `tikray view` draws PNG, JPEG and SVG inline in iTerm2.
-> `tikray convert` and the TUI shell are specced but not built — see
-> [`specs/INDEX.md`](specs/INDEX.md).
+> **Status: Phase 3.** `tikray view` draws PNG, JPEG and SVG inline in iTerm2,
+> and `tikray convert` writes any of them back out as PNG or JPEG. The TUI shell
+> is specced but not built — see [`specs/INDEX.md`](specs/INDEX.md).
 
 ## Install
 
@@ -26,6 +26,10 @@ cargo install --path .
 ```sh
 tikray view <path>            # draw a PNG, JPEG or SVG inline
 tikray view --force <path>    # emit the escape sequence anyway (see below)
+
+tikray convert <in> <out>              # format comes from <out>'s extension
+tikray convert --format jpeg <in> <out>   # ...or from --format, which wins
+tikray convert --overwrite <in> <out>  # replace <out> if it already exists
 ```
 
 `view` is required, and deliberately so. A bare `tikray <path>` is reserved for
@@ -37,6 +41,7 @@ the TUI browser, so that `view` keeps meaning the one thing worth naming:
 | | |
 |---|---|
 | **Input formats** | PNG, JPEG, SVG |
+| **Output formats** | PNG, JPEG |
 | **Terminal** | iTerm2 only |
 
 Input format is detected from the file's **contents**, not its extension: a PNG
@@ -78,6 +83,30 @@ second stops another terminal from printing them at you.
 Both checks have known false negatives — plain tmux breaks them, as can an
 unrecognized iTerm2-compatible terminal — so `--force` skips both and emits
 anyway.
+
+### Converting
+
+`tikray convert <in> <out>` writes any supported input back out as PNG or JPEG.
+It needs no terminal — it writes a file, not escape bytes — so it works fine over
+ssh, in a script, or piped.
+
+The output format comes from `<out>`'s extension, or from `--format` where you
+give one, which wins. Both are read case-insensitively. **An existing file is
+never replaced without `--overwrite`**, and the refusal happens before anything
+is read or written, so a run that cannot succeed leaves the destination exactly
+as it was.
+
+**JPEG has no alpha channel**, so a transparent PNG or SVG is composited onto
+**white** before it is written — the same thing a browser or image viewer shows
+you — and the run says so on stderr. This is worth knowing because the obvious
+alternative is not "it refuses": the underlying library silently drops alpha
+instead, which puts a transparent image on a *black* background with no error at
+all. There are no quality or compression flags; the library defaults stand.
+
+**Writing SVG is refused**, by name. Tikray converts through a pixel buffer, so a
+raster in would have to be *traced* — a different and much larger tool — and an
+SVG in would come back out a raster wearing an `.svg` extension. SVG is an input
+format here, not an output one.
 
 ## Non-goals
 

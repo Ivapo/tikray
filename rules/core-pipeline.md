@@ -4,28 +4,34 @@ sources:
   - src/lib.rs
   - src/load.rs
   - src/svg.rs
+  - src/convert.rs
   - src/error.rs
 covers: >
   the DynamicImage waist, the content-sniffing load path, the raster and vector
-  branches behind it, the per-phase input allowlist, and the error taxonomy the
-  CLI renders to stderr
-max_lines: 70
+  branches behind it, the per-phase input allowlist, the two output edges and
+  the format matrix, and the error taxonomy the CLI renders to stderr
+max_lines: 90
 generated: 2026-08-16
 ---
 
 # Core pipeline
 
 Every capability is the same pipeline with a different edge enabled:
-**decode-or-rasterize → one in-memory buffer → display-or-encode.** As of Phase 2
-both input edges exist and the display edge exists; nothing encodes to a file yet.
+**decode-or-rasterize → one in-memory buffer → display-or-encode.** As of Phase 3
+all four edges exist: raster decode and SVG rasterization in, the terminal and a
+file out.
 
 ## The waist is `DynamicImage`
 
 `src/load.rs:load` returns `image::DynamicImage`, not a fixed RGBA8 raster. It
 keeps the source's channel layout and bit depth, where `to_rgba8()` would
 quantize a 16-bit PNG to 8 on load — invisible for display, material for the
-convert edge, which reads a written file back and compares it. Individual edges
-convert to concrete buffers where they need to; the waist does not.
+convert edge. `tests/gate_phase3.rs` is where that claim is finally cashed: a
+16-bit PNG converted to PNG reads back `Rgb16` with `[65535, 1234, 7]` intact,
+where a `to_rgba8()` first reads back `Rgba8` with `[65535, 1285, 0]` — and
+**both report `Png` at the same dimensions**, so only colour type and pixel
+separate them. Individual edges convert to concrete buffers where they need to;
+the waist does not.
 
 ## Format comes from the bytes, never the extension
 
@@ -74,6 +80,21 @@ With default features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP, so
 succeeding on a format no phase has gated. Sniffing is feature-independent —
 `image`'s `MAGIC_BYTES` table carries no `cfg` — so the detected name is right
 even for formats the build cannot decode.
+
+## Both output edges exist, and the matrix is not square
+
+`src/display.rs:sequence` encodes the buffer for the terminal and
+`src/convert.rs:encode` encodes it for a file. They share the waist and nothing
+else, and what each supports is decided separately:
+
+| | PNG | JPEG | SVG | GIF, BMP, TIFF, WebP, … |
+|---|---|---|---|---|
+| **in** | yes | yes | yes | refused, by name |
+| **out** | yes | yes | **refused, by name** | refused, by name |
+
+`src/convert.rs:Output` is the output allowlist as `src/load.rs:ALLOWED` is the
+input one, and it is a two-variant enum rather than a runtime check so it cannot
+name an ungated format at all. SVG is input-only — see `rules/convert.md`.
 
 ## Errors are text, one variant per failure
 

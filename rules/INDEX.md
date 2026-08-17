@@ -2,8 +2,10 @@
 
 # Rules
 
-- **[core-pipeline](core-pipeline.md)** — generated 2026-08-16 · 4 sources · 68/70 lines
-  the DynamicImage waist, the content-sniffing load path, the raster and vector branches behind it, the per-phase input allowlist, and the error taxonomy the CLI renders to stderr
+- **[convert](convert.md)** — generated 2026-08-16 · 2 sources · 52/55 lines
+  the output allowlist as a two-variant type, how the target format is resolved and why not through the image crate, the composite-onto-white arithmetic and the note that announces it, and the order run takes its two cheap refusals in
+- **[core-pipeline](core-pipeline.md)** — generated 2026-08-16 · 5 sources · 88/90 lines
+  the DynamicImage waist, the content-sniffing load path, the raster and vector branches behind it, the per-phase input allowlist, the two output edges and the format matrix, and the error taxonomy the CLI renders to stderr
 - **[iterm2-display](iterm2-display.md)** — generated 2026-08-16 · 2 sources · 50/50 lines
   the OSC 1337 argument string, the fit-down-never-up sizing arithmetic, the viewport query, and iTerm2 detection with its --force override
 - **[svg-rasterization](svg-rasterization.md)** — generated 2026-08-16 · 1 source · 44/50 lines

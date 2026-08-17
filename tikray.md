@@ -7,8 +7,9 @@ raster and vector images — PNG, JPEG, and SVG at minimum. One tool instead of
 reaching for a separate viewer (`chafa`, `timg`) and converter (ImageMagick).
 
 - **View:** render PNG/JPEG/SVG inline in iTerm2.
-- **Convert:** export/save any of the above into any of the others (and
-  possibly more raster formats for free, depending on the library used).
+- **Convert:** export/save any of the above as PNG or JPEG. (The seed said "any
+  of the others"; SVG turned out to be input-only — writing one would mean
+  tracing, which is a different tool.)
 
 ## Name
 
@@ -62,6 +63,6 @@ clear.
 
 ## Status
 
-Phases 1-2 of `tkr-001` built: `tikray view` draws PNG, JPEG and SVG inline in
-iTerm2. Per-phase state lives in `specs/INDEX.md`; current behaviour lives in
-`rules/`.
+Phases 1-3 of `tkr-001` built: `tikray view` draws PNG, JPEG and SVG inline in
+iTerm2, and `tikray convert` writes any of them back out as PNG or JPEG.
+Per-phase state lives in `specs/INDEX.md`; current behaviour lives in `rules/`.

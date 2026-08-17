@@ -1,6 +1,6 @@
-//! Every way Phase 1 can fail, as text a user can act on.
+//! Every way tikray can fail, as text a user can act on.
 //!
-//! One variant per failure named in tkr-001's Phase 1 exit gate. The split
+//! One variant per failure named in tkr-001's exit gates. The split
 //! between [`TikrayError::FormatUndetermined`] and [`TikrayError::Decode`] is
 //! load-bearing rather than tidy: it is the externally visible evidence that
 //! the load path sniffs content instead of trusting the path extension (§2.8).
@@ -33,6 +33,19 @@ pub enum TikrayError {
         path: PathBuf,
         source: image::ImageError,
     },
+
+    /// The bytes detected as SVG, and `usvg` refused them (§2.10).
+    ///
+    /// `usvg` is the final arbiter of the detection rule: a false positive — an
+    /// HTML file carrying an inline `<svg` — lands here as a legible parse
+    /// error rather than as a wrong render.
+    SvgParse {
+        path: PathBuf,
+        source: usvg::Error,
+    },
+
+    /// The SVG parsed, and turning it into pixels failed.
+    Rasterize { path: PathBuf, reason: String },
 
     /// Stdout is not a terminal, so emitting would write escape bytes to a file (§2.7).
     NotATty,
@@ -83,12 +96,18 @@ impl fmt::Display for TikrayError {
             TikrayError::FormatNotAllowed { path, format } => write!(
                 f,
                 "{} is a {} image, which tikray does not support yet — \
-                 supported input formats are PNG and JPEG",
+                 supported input formats are PNG, JPEG and SVG",
                 path.display(),
                 format_name(*format),
             ),
             TikrayError::Decode { path, source } => {
                 write!(f, "could not decode {}: {source}", path.display())
+            }
+            TikrayError::SvgParse { path, source } => {
+                write!(f, "could not parse {} as SVG: {source}", path.display())
+            }
+            TikrayError::Rasterize { path, reason } => {
+                write!(f, "could not rasterize {}: {reason}", path.display())
             }
             TikrayError::NotATty => write!(
                 f,
@@ -116,8 +135,10 @@ impl std::error::Error for TikrayError {
         match self {
             TikrayError::Io { source, .. } | TikrayError::Output { source } => Some(source),
             TikrayError::Decode { source, .. } | TikrayError::Encode { source } => Some(source),
+            TikrayError::SvgParse { source, .. } => Some(source),
             TikrayError::FormatUndetermined { .. }
             | TikrayError::FormatNotAllowed { .. }
+            | TikrayError::Rasterize { .. }
             | TikrayError::NotATty
             | TikrayError::NotIterm2 => None,
         }

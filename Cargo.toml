@@ -10,6 +10,13 @@ license = "MIT"
 # `image` decoding more than Tikray supports, with an explicit per-phase allowlist
 # deciding what is *supported* rather than what happens to link in.
 image = "0.25"
+# Pure Rust, so there is no C toolchain step and the binary stays one artifact —
+# the deciding reason over librsvg/Cairo (§2.4). `tiny-skia` is deliberately not
+# declared here: it arrives through `resvg`, and `src/svg.rs` reaches it as
+# `resvg::tiny_skia`. Default features carry `text`, `system-fonts` and
+# `memmap-fonts`, which §2.11's `load_system_fonts()` call needs.
+resvg = "0.48"
+usvg = "0.48"
 base64 = "0.23"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.29"

@@ -9,11 +9,14 @@
 //! (§2.2): Phase 4 adds a second caller, and a core living inside `main` would
 //! have to be rewritten at that point rather than reused.
 //!
-//! Phase 1 implements `tikray view <png|jpeg>` and nothing else.
+//! `tikray view <png|jpeg|svg>` is what exists so far. Vector input is not a
+//! second program: [`svg::rasterize`] fills the same buffer, so everything
+//! downstream of the waist is blind to which edge filled it.
 
 pub mod display;
 pub mod error;
 pub mod load;
+pub mod svg;
 pub mod term;
 
 pub use error::TikrayError;

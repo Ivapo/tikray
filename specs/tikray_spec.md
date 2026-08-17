@@ -275,6 +275,19 @@ exists because the checks have known false negatives (tmux, an unrecognized
 iTerm2-compatible terminal), and a detection rule with no override turns a
 false negative into an unusable tool.
 
+**CORRECTED 2026-08-17 — `--force` does not rescue the tmux case, and naming it
+among the false negatives implied it does.** The two halves of tmux are separate
+failures and only one is ours: detection fails because neither variable survives
+(that half `--force` genuinely fixes), and *tmux then swallows the escape
+sequence itself* unless `allow-passthrough` is on — an option that has existed
+since tmux 3.3 and is **off by default**. Checked on this machine: tmux 3.6a with
+no `allow-passthrough` in `~/.tmux.conf`, so it is off. Under tmux, `--force`
+therefore buys an emitted sequence and still no picture. Left unverified
+end-to-end deliberately, because OQ-5's answer makes it low-value — but named,
+because "the stopgap is `--force`" was a claim the escape hatch cannot honour.
+Whoever picks tmux up owns **two** problems: detection, and passthrough (wrapping
+the sequence in tmux's DCS form). Only the first is what §2.7 is about.
+
 ### 2.8 Input formats: detect by content, allowlist by phase *(decision, recorded)*
 
 **Detection is content-based from Phase 1**, and *which* content-based
@@ -669,14 +682,27 @@ is what makes `auto` fine there and not here.
   not composite — it drops alpha, so a transparent pixel lands on **black**
   (measured `[0, 0, 0, 0]` → `[0, 1, 0]`). "Or refuse" was never the live
   alternative to "composite"; *silently wrong* was.
-- **OQ-5** — Does `view` need to survive tmux and ssh? tmux requires escape
+- **OQ-5** — ~~Does `view` need to survive tmux and ssh? tmux requires escape
   passthrough and iTerm2's protocol is commonly broken by it. Supporting it is
   small if designed in and awkward if retrofitted. *(needs-input — it is a
   question about how the user actually works)* **Blocks no phase; §2.7's
   `--force` is the stopgap.** It decides whether a later phase owns tmux
   passthrough, and it is the question that would reopen §2.7's rejection of
   Feature Reporting — so if the answer is "yes, tmux daily", that decision gets
-  re-argued before Phase 4 rather than after.
+  re-argued before Phase 4 rather than after.~~ **RESOLVED 2026-08-17 — put to a
+  person, who answered: tmux rarely, and not daily.** So **no phase owns tmux
+  passthrough**, and §2.7's rejection of Feature Reporting **stands un-reopened**
+  — Phase 4 proceeds without re-arguing it, which is the branch this question
+  existed to decide.
+
+  Two notes, because the question was less symmetric than it looked. **The ssh
+  half was already discharged** and did not need this answer: §2.7 checks
+  `LC_TERMINAL` precisely because it is the variable that survives an ssh hop, so
+  `view` over ssh works today. And **the tmux half's stated stopgap does not
+  exist** — see §2.7's 2026-08-17 correction. "Rarely" is not "never", so this is
+  recorded as *not designed for*, not as a non-goal: an occasional tmux user gets
+  no picture rather than a degraded one, and the fix is two problems rather than
+  the one §2.7 addresses.
 - **OQ-6** — Multi-frame inputs (animated GIF, multi-page TIFF). §1.1 declares
   first-frame-only; the open part is whether the tool must *say* so, and where.
   ~~*(design call — **Phase 3**, which is the first phase whose allowlist can

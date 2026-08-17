@@ -16,7 +16,7 @@ phases:
     by: null
   - name: "Phase 2 — view an SVG, by rasterizing into the same buffer"
     reviewed: 2026-08-16
-    shipped: null
+    shipped: 2026-08-16
     cut: null
     by: null
   - name: "Phase 3 — convert: write the buffer back out in another format"

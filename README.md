@@ -13,6 +13,10 @@ meanings.
 
 ## Install
 
+Needs a Rust toolchain, and **iTerm2** to see anything — the display half is
+iTerm2-only by design (see [Non-goals](#non-goals)). There is no C toolchain
+step: `resvg` rasterizes SVG in pure Rust, so this builds to a single binary.
+
 ```sh
 cargo install --path .
 ```
@@ -75,10 +79,32 @@ Both checks have known false negatives — plain tmux breaks them, as can an
 unrecognized iTerm2-compatible terminal — so `--force` skips both and emits
 anyway.
 
+## Non-goals
+
+Named here because they are refusals, not gaps waiting to be filled:
+
+- **Other terminals.** No Kitty graphics protocol, no Sixel, no ASCII/half-block
+  fallback. Supporting a second protocol means capability detection, per-protocol
+  sizing and degraded fidelity — a much larger design problem.
+- **Editing.** No crop, resize, rotate, filter or composite. Scaling exists only
+  to fit the window, and is not a user-facing operation.
+- **Animation.** A multi-frame input is treated as its first frame.
+- **Batch pipelines.** No globbing or recursion. One input, one output.
+
 ## Development
 
-This repo is developed spec-driven; see [`CLAUDE.md`](CLAUDE.md).
+This repo is developed spec-driven: `specs/` records *why* a decision was made
+and what the plan is, `rules/` records *what is true right now*. Start at
+[`specs/INDEX.md`](specs/INDEX.md) and [`CLAUDE.md`](CLAUDE.md).
 
 ```sh
 cargo test     # the exit gate for the phases built so far
 ```
+
+Each phase carries an exit gate someone else could check, and no phase is built
+until its own review round converges — the record of those rounds is in
+[`specs/reviews/`](specs/reviews/).
+
+## License
+
+MIT — see [LICENSE](LICENSE).

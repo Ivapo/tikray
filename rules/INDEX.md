@@ -2,7 +2,9 @@
 
 # Rules
 
-- **[core-pipeline](core-pipeline.md)** — generated 2026-08-16 · 3 sources · 48/50 lines
-  the DynamicImage waist, the content-sniffing load path, the per-phase input allowlist, and the error taxonomy the CLI renders to stderr
+- **[core-pipeline](core-pipeline.md)** — generated 2026-08-16 · 4 sources · 68/70 lines
+  the DynamicImage waist, the content-sniffing load path, the raster and vector branches behind it, the per-phase input allowlist, and the error taxonomy the CLI renders to stderr
 - **[iterm2-display](iterm2-display.md)** — generated 2026-08-16 · 2 sources · 50/50 lines
   the OSC 1337 argument string, the fit-down-never-up sizing arithmetic, the viewport query, and iTerm2 detection with its --force override
+- **[svg-rasterization](svg-rasterization.md)** — generated 2026-08-16 · 1 source · 44/50 lines
+  usvg's resolved size as the rasterization target, the premultiplied-alpha boundary out of tiny-skia, the system font database, and the two SVG-specific error variants

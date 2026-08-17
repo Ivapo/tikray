@@ -78,20 +78,32 @@ fn looks_like_svg(head: &[u8]) -> bool {
     window.windows(4).any(|w| w.eq_ignore_ascii_case(b"<svg"))
 }
 
-/// Phase 2's allowlist, as a check over [`Input`].
+/// The inputs Phase 2 supports, as opposed to the ones `image` happens to decode.
+///
+/// A check over [`Input`], not over `[ImageFormat; 2]` — which is what SVG
+/// joining the list costs, since `image::ImageFormat` cannot express it.
 ///
 /// With default features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP
 /// without being asked, so "unsupported format" is something Tikray decides
-/// rather than something that happens to it (§2.8). A decodable-but-not-allowed
-/// input is refused by name, so the failure is legible rather than a silent
-/// success on a format no phase has gated.
+/// rather than something that happens to it (§2.8).
+const ALLOWED: [Input; 3] = [
+    Input::Raster(ImageFormat::Png),
+    Input::Raster(ImageFormat::Jpeg),
+    Input::Svg,
+];
+
+/// Refuse an input no phase has gated, naming the format it turned out to be.
+///
+/// The failure is legible rather than a silent success. The only way to be
+/// refused is a raster outside [`ALLOWED`], and that is the arm holding the
+/// format to name — so `Input::Svg` needs no unreachable branch here.
 fn allowed(input: Input, path: &Path) -> Result<(), TikrayError> {
     match input {
-        Input::Raster(ImageFormat::Png | ImageFormat::Jpeg) | Input::Svg => Ok(()),
-        Input::Raster(format) => Err(TikrayError::FormatNotAllowed {
+        Input::Raster(format) if !ALLOWED.contains(&input) => Err(TikrayError::FormatNotAllowed {
             path: path.to_path_buf(),
             format,
         }),
+        Input::Raster(_) | Input::Svg => Ok(()),
     }
 }
 

@@ -62,5 +62,6 @@ clear.
 
 ## Status
 
-Phase 1 of `tkr-001` built: `tikray view` draws PNG and JPEG inline in iTerm2.
-Per-phase state lives in `specs/INDEX.md`; current behaviour lives in `rules/`.
+Phases 1-2 of `tkr-001` built: `tikray view` draws PNG, JPEG and SVG inline in
+iTerm2. Per-phase state lives in `specs/INDEX.md`; current behaviour lives in
+`rules/`.

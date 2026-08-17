@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+  <!-- No background rect, deliberately: the page is fully transparent.
+       That is what makes this the sample for `convert ... .jpg`, where the
+       alpha has to be composited onto white rather than dropped onto black. -->
+  <g fill-opacity="0.55">
+    <circle cx="240" cy="215" r="130" fill="#e0393e"/>
+    <circle cx="400" cy="215" r="130" fill="#2f7fd4"/>
+    <circle cx="320" cy="120" r="110" fill="#f0b429"/>
+  </g>
+  <g fill-opacity="0.9">
+    <rect x="500" y="60"  width="100" height="100" rx="8" fill="#101018"/>
+    <rect x="500" y="180" width="100" height="100" rx="8" fill="#8a8a94"/>
+    <rect x="500" y="300" width="100" height="60"  rx="8" fill="#f4f4f6"/>
+  </g>
+  <!-- A hairline frame, so "where does the image end" is visible against
+       both a white page and a dark terminal. -->
+  <rect x="4" y="4" width="632" height="412" rx="10"
+        fill="none" stroke="#5a5a6a" stroke-width="2" stroke-opacity="0.6"/>
+</svg>

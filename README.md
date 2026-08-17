@@ -36,6 +36,15 @@ tikray convert --overwrite <in> <out>  # replace <out> if it already exists
 the TUI browser, so that `view` keeps meaning the one thing worth naming:
 *print it and give me my prompt back, don't take my screen.*
 
+There is something to point it at in [`samples/`](samples/) — a vector scene, the
+same scene converted to PNG and JPEG, a 24×24 icon and a transparent one. Each
+shows a different rule rather than being decoration; [`samples/README.md`](samples/README.md)
+says which.
+
+```sh
+tikray view samples/landscape.svg
+```
+
 ### What it supports today
 
 | | |
@@ -133,6 +142,14 @@ cargo test     # the exit gate for the phases built so far
 Each phase carries an exit gate someone else could check, and no phase is built
 until its own review round converges — the record of those rounds is in
 [`specs/reviews/`](specs/reviews/).
+
+Most of a gate is `cargo test`, but the part that matters most is not: *does a
+person looking at the screen see the right picture?* That half cannot be
+asserted, so it is a script instead of a test.
+
+```sh
+bash scripts/gate8.sh    # Phase 3's item 8 — needs iTerm2, asks you questions
+```
 
 ## License
 

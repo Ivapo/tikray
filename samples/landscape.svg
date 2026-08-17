@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#1b2a4a"/>
+      <stop offset="45%"  stop-color="#7b4b6d"/>
+      <stop offset="75%"  stop-color="#d9755b"/>
+      <stop offset="100%" stop-color="#f2b263"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#c8724f"/>
+      <stop offset="40%"  stop-color="#5d4668"/>
+      <stop offset="100%" stop-color="#1e2340"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%"   stop-color="#ffe9a8" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#ffd27f" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="800" fill="url(#sky)"/>
+  <circle cx="820" cy="470" r="180" fill="url(#glow)"/>
+  <circle cx="820" cy="470" r="62" fill="#ffe6a0"/>
+
+  <!-- Far range -->
+  <path d="M0 470 L150 372 L280 448 L430 330 L560 442 L700 366 L850 452 L1000 384 L1200 462 L1200 520 L0 520 Z"
+        fill="#4a3557" fill-opacity="0.85"/>
+  <!-- Middle range -->
+  <path d="M0 520 L180 424 L340 508 L500 410 L660 500 L830 428 L1000 512 L1200 440 L1200 560 L0 560 Z"
+        fill="#33263f"/>
+  <!-- Near range -->
+  <path d="M0 560 L220 486 L420 556 L620 478 L820 552 L1030 490 L1200 548 L1200 600 L0 600 Z"
+        fill="#1f1830"/>
+
+  <!-- Water -->
+  <rect y="600" width="1200" height="200" fill="url(#water)"/>
+  <g fill="#ffd9a0" fill-opacity="0.42">
+    <rect x="770" y="628" width="100" height="5" rx="2.5"/>
+    <rect x="790" y="652" width="62"  height="4" rx="2"/>
+    <rect x="756" y="676" width="130" height="5" rx="2.5"/>
+    <rect x="800" y="702" width="44"  height="4" rx="2"/>
+    <rect x="742" y="728" width="158" height="5" rx="2.5"/>
+    <rect x="794" y="756" width="56"  height="4" rx="2"/>
+  </g>
+
+  <!-- Foreground bank -->
+  <path d="M0 800 L0 690 Q160 656 300 700 Q430 742 520 800 Z" fill="#120d1e"/>
+  <g stroke="#120d1e" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M96 692 L96 604"/>
+    <path d="M96 636 L58 606"/>
+    <path d="M96 660 L136 628"/>
+    <path d="M212 706 L212 640"/>
+    <path d="M212 668 L182 646"/>
+  </g>
+</svg>

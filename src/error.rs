@@ -53,11 +53,33 @@ pub enum TikrayError {
     /// No iTerm2 signal in the environment (§2.7).
     NotIterm2,
 
-    /// Re-encoding the buffer to PNG for the payload failed (§2.3).
+    /// Encoding the buffer failed, on the display edge or the convert one.
     Encode { source: image::ImageError },
 
     /// Writing the escape sequence out failed.
     Output { source: std::io::Error },
+
+    /// The destination names no output format, and `--format` did not either (§2.12).
+    OutputUndetermined { path: PathBuf },
+
+    /// The destination names a format no phase has gated as an *output* (§2.12).
+    ///
+    /// Its own variant rather than [`TikrayError::FormatNotAllowed`], whose
+    /// message ends "supported **input** formats are …" and would report about
+    /// the wrong side of the pipeline.
+    OutputNotAllowed { path: PathBuf, name: String },
+
+    /// The destination is SVG, which tikray does not write (OQ-2, §2.12).
+    OutputSvg { path: PathBuf },
+
+    /// The destination exists and `--overwrite` was not given.
+    OutputExists { path: PathBuf },
+
+    /// Writing the encoded bytes to the destination failed.
+    Write {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl TikrayError {
@@ -121,10 +143,41 @@ impl fmt::Display for TikrayError {
                  use --force to emit anyway"
             ),
             TikrayError::Encode { source } => {
-                write!(f, "could not encode the image for display: {source}")
+                write!(f, "could not encode the image: {source}")
             }
             TikrayError::Output { source } => {
                 write!(f, "could not write the image to stdout: {source}")
+            }
+            TikrayError::OutputUndetermined { path } => write!(
+                f,
+                "the output format could not be determined for {}: it has no \
+                 extension naming one — give it a .png or .jpg extension, or \
+                 pass --format",
+                path.display()
+            ),
+            TikrayError::OutputNotAllowed { path, name } => write!(
+                f,
+                "cannot write {} as {}: supported output formats are PNG and JPEG",
+                path.display(),
+                name.to_uppercase(),
+            ),
+            // Both readings, in one message, because the destination is `.svg`
+            // either way and only the source differs (§2.12).
+            TikrayError::OutputSvg { path } => write!(
+                f,
+                "cannot write SVG ({}): tikray converts through a pixel buffer, \
+                 so a raster in would have to be traced (a different tool), and \
+                 an SVG in would come back out a raster wearing an .svg \
+                 extension — supported output formats are PNG and JPEG",
+                path.display()
+            ),
+            TikrayError::OutputExists { path } => write!(
+                f,
+                "{} already exists — pass --overwrite to replace it",
+                path.display()
+            ),
+            TikrayError::Write { path, source } => {
+                write!(f, "could not write {}: {source}", path.display())
             }
         }
     }
@@ -133,14 +186,20 @@ impl fmt::Display for TikrayError {
 impl std::error::Error for TikrayError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            TikrayError::Io { source, .. } | TikrayError::Output { source } => Some(source),
+            TikrayError::Io { source, .. }
+            | TikrayError::Output { source }
+            | TikrayError::Write { source, .. } => Some(source),
             TikrayError::Decode { source, .. } | TikrayError::Encode { source } => Some(source),
             TikrayError::SvgParse { source, .. } => Some(source),
             TikrayError::FormatUndetermined { .. }
             | TikrayError::FormatNotAllowed { .. }
             | TikrayError::Rasterize { .. }
             | TikrayError::NotATty
-            | TikrayError::NotIterm2 => None,
+            | TikrayError::NotIterm2
+            | TikrayError::OutputUndetermined { .. }
+            | TikrayError::OutputNotAllowed { .. }
+            | TikrayError::OutputSvg { .. }
+            | TikrayError::OutputExists { .. } => None,
         }
     }
 }

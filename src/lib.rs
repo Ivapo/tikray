@@ -9,10 +9,13 @@
 //! (§2.2): Phase 4 adds a second caller, and a core living inside `main` would
 //! have to be rewritten at that point rather than reused.
 //!
-//! `tikray view <png|jpeg|svg>` is what exists so far. Vector input is not a
-//! second program: [`svg::rasterize`] fills the same buffer, so everything
-//! downstream of the waist is blind to which edge filled it.
+//! `tikray view <png|jpeg|svg>` and `tikray convert <in> <out>` are what exist
+//! so far — both output edges over one waist. Vector input is not a second
+//! program: [`svg::rasterize`] fills the same buffer, so everything downstream
+//! of the waist is blind to which edge filled it, and every input the load path
+//! supports is convertible on arrival rather than one at a time.
 
+pub mod convert;
 pub mod display;
 pub mod error;
 pub mod load;

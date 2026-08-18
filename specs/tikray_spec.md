@@ -621,6 +621,17 @@ actually being transparent: a coarser rule, and one an implementer cannot get
 subtly wrong. **`src/main.rs:run` emits it, not `encode`** — `encode` is the phase's
 pure seam, and a function that writes to stderr is not one.
 
+**CORRECTED 2026-08-17 — "one line on stderr" is the CLI's channel, and after
+Phase 5 it is only the CLI's.** *(Phase 5 is specced and not yet built; until it
+is, this subsection is accurate as written.)* Inside the TUI's alternate screen
+an `eprintln!` paints over the display, which is the contradiction Phase 4's
+round 1 found in one ungated clause and the reason Phase 5 exists at all. There
+the same notice becomes a **result line in the pane**, carried out of that
+phase's convert seam as a `flattened` flag rather than printed. **The
+condition below is unchanged on both surfaces** — the buffer *having* an alpha
+channel — and that is the part this note exists to protect: two channels, one
+rule.
+
 **Quality and compression stay at the library defaults, with no flags** (JPEG
 quality 75, via `JpegEncoder::new`). §1.1 makes editing a non-goal, and a
 `--quality` flag is the thin end of exactly the operator set this project refuses
@@ -1269,7 +1280,7 @@ and none is derivable from §1.
 
   | File | Entry points |
   |---|---|
-  | `src/tui.rs` | `+ pub fn destination(source: &Path, target: Output) -> PathBuf` — pure; `+ pub fn convert_to(source: &Path, target: Output, force: bool) -> Result<Written, TikrayError>` — filesystem, **no terminal**; `+ pub struct Written { path: PathBuf, flattened: bool }`; `Browser` gains the keys and a pending-confirm state |
+  | `src/tui.rs` | `+ pub fn destination(source: &Path, target: Output) -> PathBuf` — pure; `+ pub fn convert_to(source: &Path, target: Output, force: bool) -> Result<Written, TikrayError>` — filesystem, **no terminal**; `+ pub struct Written { pub path: PathBuf, pub flattened: bool }` — **public fields**, since the gate reads `flattened` from another crate; `Browser` gains the keys and a pending-confirm state |
   | `src/error.rs` | `+ OutputIsSource { path }` — the case a CLI destination cannot reach |
 
   **`src/convert.rs:resolve` is not used, and that is a finding rather than an
@@ -1277,12 +1288,18 @@ and none is derivable from §1.
   `--format` into an `Output`; here the *key is* the `Output`, so there is
   nothing to interpret and calling it would mean constructing a path in order to
   parse the extension back off it. Phase 5's original sketch said this phase
-  calls `resolve` and `encode`; it calls `src/convert.rs:encode` and
-  `src/convert.rs:flatten` only. **`src/main.rs:run` is untouched** — it is the
-  CLI caller and owns the `eprintln!` §2.13 put there, which is exactly why this
-  phase cannot route through it.
+  calls `resolve` and `encode`; it calls **`src/convert.rs:encode` alone**.
 
-  Five decisions, four of them the ones the phase was split out to make:
+  `src/convert.rs:flatten` is *not* called beside it, which is worth stating
+  because calling both is the obvious shape and is redundant rather than wrong:
+  `encode` already composites on exactly §2.13's condition, and a pre-flattened
+  buffer reports `has_alpha() == false`, so the bytes come out identical either
+  way. One call, and the `flattened` flag is computed from the same condition
+  rather than from having done the work. **`src/main.rs:run` is untouched** — it
+  is the CLI caller and owns the `eprintln!` §2.13 put there, which is exactly
+  why this phase cannot route through it.
+
+  Six decisions, four of them the ones the phase was split out to make:
 
   1. **`P` writes PNG, `J` writes JPEG, beside the source with the same
      basename.** No prompt and no text entry: the output allowlist is a
@@ -1297,7 +1314,11 @@ and none is derivable from §1.
      across cases would be worse than a shifted pair. The shift also suits an
      operation that writes to disk.
   2. **The destination is `set_extension` on the source path**, so
-     `photo.svg` + `P` → `photo.png`. Named as a decision because it has a corner
+     `photo.svg` + `P` → `photo.png`. **`Output::Jpeg` writes `jpg`**, not
+     `jpeg` — `src/convert.rs:resolve` accepts both on the way in, so which one
+     comes back out is a choice rather than a default, and it has to be stated
+     here because an implementer reads the decision before the gate that pins
+     it. Named as a decision because it has a corner
      an implementer meets immediately: `archive.tar.gz` becomes `archive.tar.png`,
      since `set_extension` replaces only the final component. That is the same
      answer `tikray convert archive.tar.gz out.png` gives, so the two surfaces
@@ -1316,6 +1337,21 @@ and none is derivable from §1.
      PNG asks for a re-encode of the file in place, which is destructive and
      achieves nothing. A message saying "that is the file itself" is more useful
      than one saying it already exists.
+
+     **`force` never bypasses this check, and the check comes first.** Decision
+     3's second press exists to overwrite *a different file*; letting it through
+     here would perform in place exactly the destructive re-encode this decision
+     was written to prevent, and it would do it on the second press of a key
+     whose first press said the wrong thing. Ordering: source check, then
+     exists check, then write.
+
+     **The comparison is not string equality**, which misses the case that
+     actually bites: on a case-insensitive filesystem — APFS's default — a
+     source named `photo.PNG` derives `photo.png`, a different string naming the
+     same file. `OutputIsSource` would miss it, `OutputExists` would fire, and a
+     confirm would overwrite the source in place. So when the destination
+     exists, the two are compared through `std::fs::canonicalize`; when it does
+     not exist it cannot be the source, and no canonicalization is needed.
   5. **`convert_to` loads from disk rather than reusing the preview buffer.**
      The buffer is right there and reusing it would be faster, but
      `Browser::preview` is `None` on a terminal that is not iTerm2 (Phase 4's
@@ -1335,6 +1371,24 @@ and none is derivable from §1.
   any pixel being transparent — because a coarser rule an implementer cannot get
   subtly wrong was the whole argument, and Phase 3's exit gate recorded what it
   costs: every SVG→JPEG conversion announces a flattening, transparency or not.
+
+  **The result line outranks the standing conditions, and that is a change to
+  `src/tui.rs:Browser::status`, not an addition to it.** As shipped, `status`
+  returns `NOT_ITERM2` unconditionally when previews are off — and that is
+  *precisely* the terminal decision 5 went out of its way to keep the convert
+  keys working on. A new branch appended to the existing precedence would
+  therefore write a file and say nothing about it on the one surface where the
+  user has no picture to confirm it by. So the order becomes: **a pending result
+  first**, then the standing conditions, then the per-entry reason. The result is
+  cleared by the next navigation, which is also what clears decision 3's pending
+  confirm.
+
+  6. **The listing is refreshed after a successful write.** `P` on `photo.svg`
+     creates `photo.png` in the directory currently on screen, and a browser that
+     does not show it until you navigate away and back is reporting something the
+     user can see is missing. `src/tui.rs:entries` is already re-run on every
+     directory change; this is the same call on one more trigger, and it also
+     keeps `hidden` honest.
 
 - **Exit gate:** five items runnable by `cargo test` with no terminal, and one a
   human checks. `convert_to` touches the filesystem but never the terminal, which
@@ -1361,6 +1415,17 @@ and none is derivable from §1.
      same source. That is §2.13's coarse rule asserted where it is easy to
      "improve" it into a per-pixel scan, and the PNG half is what stops the flag
      being hard-wired to the source's colour type.
+
+     **The fixture is new and its name is constrained**, which is worth stating
+     because the constraint is invisible and an implementer who hits it will be
+     tempted to weaken the item instead. `tests/fixtures/` holds exactly one RGBA
+     file, `alpha.png`, and it *does* carry transparent pixels — so this item
+     needs its own source. It must not be named `*.png`, or the PNG half derives
+     a destination equal to the source and returns `OutputIsSource` instead of a
+     `Written`. **`opaque.svg`**: a rect covering the whole viewBox, so every
+     pixel is opaque, and `src/svg.rs:rasterize` always yields `Rgba8` — the
+     property Phase 3's exit gate measured when it found that every SVG→JPEG
+     conversion announces a flattening.
   5. **Phases 1–4, 6 and 7's gates still pass, unmodified.** All 80 assertions —
      16, 11, 12, 13, 14 and 14 — green with no edits to any of the six files.
   6. **Human, in iTerm2:** in the browser, `P` and `J` on a highlighted image

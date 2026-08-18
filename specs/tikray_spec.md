@@ -262,15 +262,18 @@ subsection's arithmetic needs no vector special case (§2.11).
 The whole of this subsection is a pure function of four integers, which is what
 makes Phase 1's gate machine-checkable at all (§4, Phase 1).
 
-**CORRECTED 2026-08-17 — "the viewport comes from `window_size()`" is now
-*nearly* true, and the gap is deliberate.** Phase 7 indents the inline draw by
-two character cells, and the viewport handed to `fit` is the window **minus that
-indent**, so an image the width of the window no longer fills it. The arithmetic
-above is untouched — one `scale`, both axes, never upscale — and this note exists
-only because a reader who takes the viewport to be the whole window will compute
-a different `out_w` than the code produces and conclude the code is wrong. Where
-the indent does not fit, it is dropped rather than shrinking the picture further
-(Phase 7's decision 2). The TUI is unaffected: `src/tui.rs:pane_sequence` calls
+**CORRECTED 2026-08-17 — "the viewport comes from `window_size()`" stops being
+exactly true once Phase 7 ships, and the gap is deliberate.** *(Phase 7 is
+specced and not yet built; until it is, this subsection is accurate as written
+and this note is a forward pointer, not a description of the code.)* That phase
+indents the inline draw by two character cells and hands `fit` the window
+**minus that indent**, so an image the width of the window no longer fills it.
+The arithmetic above is untouched — one `scale`, both axes, never upscale — and
+the note exists because a reader who takes the viewport to be the whole window
+will compute a different `out_w` than the code produces and conclude the code is
+wrong. Where the indent does not fit it is dropped rather than the picture being
+squeezed, and a piped stdout is never indented at all (that phase's decisions 2
+and 3). The TUI is unaffected either way: `src/tui.rs:pane_sequence` calls
 `src/display.rs:sequence` directly and has its own centring.
 
 ### 2.7 Detecting iTerm2 by environment, not by asking *(decision, recorded — resolves the round-1 blocker)*
@@ -1533,7 +1536,7 @@ neither worth its own review round — and the gate keeps them separate.
 
   | File | Entry points |
   |---|---|
-  | `src/display.rs` | `+ pub const INDENT: u16 = 2`; `+ pub fn indent(viewport: Option<(u32,u32)>, cell: Option<(u32,u32)>) -> (u16, Option<(u32,u32)>)` — pure; `+ pub fn indented(img: &DynamicImage, viewport: Option<(u32,u32)>, cell: Option<(u32,u32)>) -> Result<Vec<u8>, TikrayError>` — pure, the spaces **and** the sequence; `display` reads the terminal and calls it |
+  | `src/display.rs` | `+ pub const INDENT: u16 = 2`; `+ pub fn indent(viewport: Option<(u32,u32)>, cell: Option<(u32,u32)>) -> (u16, Option<(u32,u32)>)` — pure; `+ pub fn indented(img: &DynamicImage, viewport: Option<(u32,u32)>, cell: Option<(u32,u32)>) -> Result<Vec<u8>, TikrayError>` — pure, the spaces **and** the sequence; `display` reads the terminal, decides whether to indent at all (decision 3), and calls it |
 
   **`src/display.rs:sequence`'s signature does not change**, for the reason
   Phase 6 left `pane_sequence` alone: Phase 1's gate item 2 asserts on it. The
@@ -1543,7 +1546,16 @@ neither worth its own review round — and the gate keeps them separate.
   Both inline invocations get it, `tikray <file>` and `tikray view <file>`
   alike, because Phase 6 already routed them through one `src/main.rs:view`.
 
-  Two decisions:
+  **`display` reads the terminal once**, through `src/term.rs:geometry`, and
+  derives both values from that one pair rather than calling
+  `src/term.rs:viewport` beside it. Two reads can straddle a resize — the reason
+  §2.14 made `geometry` return both pairs — and a viewport from one read paired
+  with a cell size from another is exactly the torn value that decision existed
+  to prevent. `viewport`'s zero-axis rule is preserved by hand at this call site:
+  a `0` in either pixel axis is `None`, which is what `src/display.rs:fit`
+  already turns into `auto`.
+
+  Three decisions:
 
   1. **The viewport shrinks by the indent, and that is the whole substance of
      this part.** Emitting two spaces without shrinking would push a
@@ -1560,13 +1572,37 @@ neither worth its own review round — and the gate keeps them separate.
      the spaces and the shrink must be emitted together or not at all: spaces
      without the shrink overflow, and the shrink without the spaces silently
      narrows the image for no visible reason. That is why `indent` returns both.
+  3. **The indent is for a terminal. A piped stdout gets the bare sequence** —
+     `\x1b]1337;File=` as its first byte, no spaces. This is a rule before it is
+     anything else: padding is a nicety for a person looking at a screen, and
+     §2.7's `--force` exists so that someone can capture the *sequence* to a file
+     or a pipe. Two spaces prepended to that byte stream are corruption, not
+     courtesy.
+
+     **It also resolves a collision this phase would otherwise have shipped
+     into, and that is worth recording because it was invisible from the spec.**
+     `tests/gate.rs:gate4_force_emits_anyway` runs the *binary* under
+     `view --force` with stdout on a pipe and asserts
+     `out.stdout.starts_with(b"\x1b]1337;File=")`. An unconditional indent makes
+     that false — **but only sometimes**: `window_size()` reads `/dev/tty`, so
+     `cargo test` from an iTerm2 window resolves a cell size and emits the
+     spaces, while a headless run resolves none and stays green. An assertion
+     that fails on the author's machine and passes in CI is the worst available
+     outcome, and gate item 6 forbids editing the file it lives in.
+
+     **Amending `tests/gate.rs` was considered and is rejected.** Phase 6's
+     "evidence versus procedure" argument licensed amending a gate *script*
+     precisely because a script is a procedure; `tests/gate.rs` is evidence, and
+     a phase that edits it to make room for itself has removed the thing that
+     would have caught it. Gate item 4 asserts the same property from Phase 7's
+     own file, turning an accidental coupling into a stated one.
 
 - **Scope, part 2 — the browser lists what it can preview, with a way back.**
 
   | File | Entry points |
   |---|---|
-  | `src/load.rs` | `+ pub fn previewable(head: &[u8]) -> bool` — `detect` composed with the allowlist |
-  | `src/tui.rs` | `Entry` and `+ pub fn entries(dir: &Path, all: bool) -> Result<Vec<Entry>, TikrayError>` become public so the gate can assert the listing without a terminal; `Browser` gains the toggle |
+  | `src/load.rs` | `+ pub fn previewable(head: &[u8]) -> bool` — `detect` composed with the allowlist. `ALLOWED` and `allowed` stay private: `previewable` is in the same module. **`SVG_SNIFF_LIMIT` becomes `pub`**, since the read happens in `src/tui.rs` |
+  | `src/tui.rs` | `Entry` becomes public **with public fields** — a gate that cannot read `label` cannot assert a listing — and `read_dir` becomes `+ pub fn entries(dir: &Path, all: bool) -> Result<Vec<Entry>, TikrayError>`; `Browser` gains the toggle |
 
   **The filter is the allowlist, not "is it an image".** `src/load.rs:detect`
   alone would admit GIF, BMP, TIFF, ICO, QOI and WebP, every one of which
@@ -1594,8 +1630,28 @@ neither worth its own review round — and the gate keeps them separate.
      it lands on a different file — silently, and in a UI whose whole job is to
      tell you which file you are looking at. `src/tui.rs:index_of` already does
      this for `--browse` and going up a directory.
+  4. **Four small placements, settled because the gate rides on the first.**
+     The hidden count goes in the **list pane's border title** beside the
+     directory — `~/pics — 12 hidden`, the one place already reserved for facts
+     about the listing rather than about an entry, and human item 7 asserts it is
+     visible. `a` joins `src/tui.rs:KEYS`. **The toggle persists across
+     `descend` and `ascend`**, because a filter that silently resets on entering
+     a directory is one the user has to re-apply at exactly the moment they are
+     looking for something. And an entry that cannot be **read** is treated as
+     not previewable — hidden while filtering, listed when showing all, never an
+     error: a browser lands on unreadable files, and Phase 4 already settled that
+     it keeps browsing.
 
-- **Exit gate:** five items runnable by `cargo test` with no terminal, and one a
+     **The residue this leaves, named rather than rediscovered:** `previewable`
+     is a byte rule, so `tests/fixtures/malformed.svg` — which opens `<svg` and
+     is rejected by `usvg` — is listed and then fails to draw, showing its parse
+     error in the pane. That is §2.10's "usvg remains the final arbiter" working
+     as designed, and it is the exact gap between this decision's motivation
+     ("a list offering files that cannot be drawn is worse than no filter") and
+     what a 1024-byte rule can deliver. The filter removes the formats tikray
+     *refuses*; it cannot promise every file it keeps will parse.
+
+- **Exit gate:** six items runnable by `cargo test` with no terminal, and one a
   human checks.
 
   1. **`indent` reproduces part 1's arithmetic.** With a 16×36 cell:
@@ -1615,25 +1671,40 @@ neither worth its own review round — and the gate keeps them separate.
   3. **`indented` frames the output.** It begins with exactly two `0x20` bytes
      followed by `\x1b]1337;File=`, and with `cell` of `None` begins with the
      escape immediately — no leading spaces at all.
-  4. **`previewable` is the allowlist, not the signature table.** PNG, JPEG and
+  4. **A piped run emits no spaces, asserted through the binary** (decision 3).
+     `view --force <a PNG>` with stdout on a pipe writes stdout beginning
+     **exactly** at `\x1b]1337;File=`. This is `tests/gate.rs`'s shipped item 4
+     restated in this phase's own file, deliberately: that assertion is what an
+     unconditional indent would break, it breaks *only* where `window_size()`
+     resolves — so from a real terminal and not from CI — and a coupling that
+     silent should be written down where the phase that created it can be seen.
+     Item 6 keeps the original green; this keeps it green **on purpose**.
+  5. **`previewable` is the allowlist, not the signature table.** PNG, JPEG and
      SVG fixture heads → `true`. **`still.gif` → `false`**, which is the item's
      point: GIF sniffs as a raster and is refused by `load`, so a filter keyed to
      `detect` alone would list a file that cannot be drawn. `not_an_image.png`
      and `icon24.svgz` → `false`.
-  5. **The listing is content-filtered, asserted on the existing fixtures.**
+  6. **The listing is content-filtered, asserted on the existing fixtures.**
      `entries(tests/fixtures, all = false)` contains `rgb.png`, `rgb.jpg`,
      `icon24.svg` **and `rgb_png.txt`** — a PNG named `.txt`, listed, which is
      §2.8's property surviving into the browser and the evidence the filter reads
      bytes rather than extensions. It does **not** contain `still.gif`,
-     `not_an_image.png` or `icon24.svgz`. With `all = true` it contains all
-     seven. The two halves are one item because either alone can pass wrongly:
-     content detection is proved by `rgb_png.txt` being *in*, and by
-     `not_an_image.png` being *out*.
-  6. **Phases 1–4 and 6's gates still pass, unmodified.** All 80 assertions —
+     `not_an_image.png` or `icon24.svgz`. The two halves are one item because
+     either alone can pass wrongly: content detection is proved by `rgb_png.txt`
+     being *in* **and** by `not_an_image.png` being *out*.
+
+     **The counts, since a containment assertion is not a count.** That directory
+     holds **19 files and no subdirectories**; 16 are previewable and exactly
+     those 3 are hidden. `all = true` therefore yields 19, and the assertion is
+     `entries(dir, true).len() == entries(dir, false).len() + 3` — keyed to the
+     difference rather than to 19, so adding a fixture in a later phase does not
+     falsify a shipped gate.
+  7. **Phases 1–4 and 6's gates still pass, unmodified.** All **66** assertions —
      16, 11, 12, 13 and 14 — green with no edits to any of the five files.
-     Phase 1's item 2 is the one to watch here: this phase adds a wrapper around
-     `sequence` and must not have edited it.
-  7. **Human, in iTerm2:** `tikray <file>` draws the image **indented from the
+     **Phase 1's item 4 is the one to watch**, not its item 2: item 2 asserts on
+     `sequence`, which this phase does not touch, while item 4 asserts on the
+     binary's stdout, which decision 3 is what keeps true.
+  8. **Human, in iTerm2:** `tikray <file>` draws the image **indented from the
      left edge**, and an image as wide as the window still fits on one screen
      without wrapping or scrolling — the indent came out of the width, not out of
      the margin. In the browser, only images and directories are listed, `a`
@@ -1642,17 +1713,19 @@ neither worth its own review round — and the gate keeps them separate.
      centring and the border property from Phase 6's item 5 are unchanged.
 
   Tests land in `tests/gate_phase7.rs`; the five existing gate files are not
-  edited, which is item 6. Item 7 amends `scripts/gate-phase4.sh` again, on the
+  edited, which is item 7. Item 8 amends `scripts/gate-phase4.sh` again, on the
   grounds Phase 6 recorded — a gate script is a procedure, not evidence.
 
-- **Close-out:** `rules/iterm2-display.md` gains the indent and its
-  viewport-shrink (at **58/60**, so `max_lines` rises — and on this spec's
-  two-for-two record of underestimating that raise, it should rise by more than
-  the diff appears to need). `rules/tui.md` gains the filter, the toggle and the
-  read cost; it is at 98/105. `rules/core-pipeline.md` gains `previewable`
-  beside the allowlist it composes. `README.md` gains both behaviours — the
-  Browsing section names the keys and would otherwise be wrong about what is
-  listed. **`CLAUDE.md` needs no change**; no invocation changes.
+- **Close-out:** four rules and the README.
+
+  | Artifact | Why, and the cap |
+  |---|---|
+  | `rules/iterm2-display.md` | the indent and its viewport shrink, and that `display` reads `geometry` once. At **58/60**, so `max_lines` rises — and by more than the diff appears to need, on this spec's now three-for-three record of underestimating that raise |
+  | `rules/tui.md` | the filter, the toggle, the read cost, the four placements. At 98/105 — headroom that will not survive this, so it rises too |
+  | `rules/core-pipeline.md` | `previewable` beside the allowlist it composes. **At 100/100 — already on its cap**, so this one cannot be edited without raising it |
+  | `README.md` | both behaviours; the Browsing section names the keys and would otherwise be wrong about what is listed |
+
+  **`CLAUDE.md` needs no change**; no invocation changes.
 
 <!--
 The review record is a sibling file, not a section: it lives at

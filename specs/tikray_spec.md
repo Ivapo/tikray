@@ -1259,25 +1259,133 @@ quietly be dropped; it has to go somewhere else, and *where* is a decision, not 
 bullet. Phase 4 was also already the largest phase in the spec against §3's "one
 phase = one plan-mode pass".
 
-- **Scope:** a key in the browser that converts the highlighted file. Settles,
-  because none of it is inferable: **where the output lands** (destination path
-  rule), **how the target format is chosen** (a prompt, or a fixed pair of
-  keys), **what replaces `--overwrite`** now that there is no flag, and **where
-  §2.13's flattening notice is surfaced** now that stderr is unusable. It calls
-  `src/convert.rs:resolve` and `src/convert.rs:encode` directly rather than
-  `src/main.rs:run`, since `run` is the CLI caller and owns the `eprintln!`.
-- **Exit gate**, three items its own round is expected to sharpen and add to —
-  **not** a placeholder, because §3 requires every phase to carry one:
-  1. The flattening notice reaches a human **without leaving the TUI**, on the
-     same condition §2.13 states — the buffer *having* an alpha channel, not any
-     pixel being transparent. `eprintln!` is unavailable inside the alternate
-     screen, so this is the item the phase exists to answer.
-  2. The overwrite guard still refuses, leaving the destination **byte-for-byte
-     unchanged** — Phase 3's item 5, restated at a surface with no `--overwrite`
-     flag to carry it.
-  3. Phases 1–4's gates still pass, unmodified.
-- **Close-out:** updates `rules/tui.md` and `rules/convert.md`; updates
-  `README.md`'s TUI section with the key and the destination rule.
+**Scope filled in 2026-08-17**, after Phases 6 and 7 shipped. The four questions
+this phase was split out to answer were put to a person rather than decided at
+the keyboard, because every one of them is a matter of how the tool should feel
+and none is derivable from §1.
+
+- **Scope:** two keys in the browser that write the highlighted image beside
+  itself.
+
+  | File | Entry points |
+  |---|---|
+  | `src/tui.rs` | `+ pub fn destination(source: &Path, target: Output) -> PathBuf` — pure; `+ pub fn convert_to(source: &Path, target: Output, force: bool) -> Result<Written, TikrayError>` — filesystem, **no terminal**; `+ pub struct Written { path: PathBuf, flattened: bool }`; `Browser` gains the keys and a pending-confirm state |
+  | `src/error.rs` | `+ OutputIsSource { path }` — the case a CLI destination cannot reach |
+
+  **`src/convert.rs:resolve` is not used, and that is a finding rather than an
+  omission.** `resolve` exists to turn a destination path plus an optional
+  `--format` into an `Output`; here the *key is* the `Output`, so there is
+  nothing to interpret and calling it would mean constructing a path in order to
+  parse the extension back off it. Phase 5's original sketch said this phase
+  calls `resolve` and `encode`; it calls `src/convert.rs:encode` and
+  `src/convert.rs:flatten` only. **`src/main.rs:run` is untouched** — it is the
+  CLI caller and owns the `eprintln!` §2.13 put there, which is exactly why this
+  phase cannot route through it.
+
+  Five decisions, four of them the ones the phase was split out to make:
+
+  1. **`P` writes PNG, `J` writes JPEG, beside the source with the same
+     basename.** No prompt and no text entry: the output allowlist is a
+     two-variant type (§2.12), so two keys *are* the whole format vocabulary, and
+     a chooser would be a modal state in the event loop for a choice with two
+     options.
+
+     **They are uppercase because the lowercase keys are taken**, which is worth
+     recording as the reason rather than leaving it to look like shouting:
+     `src/tui.rs:Browser`'s `key` binds `j` to Down (beside `k` for Up) and `g`
+     and `G` to Home and End. `p` is free but `j` is not, and a format pair split
+     across cases would be worse than a shifted pair. The shift also suits an
+     operation that writes to disk.
+  2. **The destination is `set_extension` on the source path**, so
+     `photo.svg` + `P` → `photo.png`. Named as a decision because it has a corner
+     an implementer meets immediately: `archive.tar.gz` becomes `archive.tar.png`,
+     since `set_extension` replaces only the final component. That is the same
+     answer `tikray convert archive.tar.gz out.png` gives, so the two surfaces
+     agree, and gate item 1 pins it rather than leaving it to be discovered.
+  3. **An existing destination is refused, and the same key pressed again
+     forces it.** Phase 3's gate item 5 asserts the destination is left
+     **byte-for-byte unchanged** on refusal, and that property is restated here
+     with no `--overwrite` flag to carry it: the first press writes nothing and
+     says the file exists, the second writes. Nothing is touched unless asked
+     twice. The pending state is keyed to *(path, format)* and is cleared by any
+     other key, so a confirm cannot survive navigating away and land on a
+     different file.
+  4. **Converting a file onto itself is refused by name**, `OutputIsSource`. It
+     is reachable only here — a CLI user typing `convert a.png a.png` gets
+     `OutputExists` first — and it is not the same mistake: pressing `P` on a
+     PNG asks for a re-encode of the file in place, which is destructive and
+     achieves nothing. A message saying "that is the file itself" is more useful
+     than one saying it already exists.
+  5. **`convert_to` loads from disk rather than reusing the preview buffer.**
+     The buffer is right there and reusing it would be faster, but
+     `Browser::preview` is `None` on a terminal that is not iTerm2 (Phase 4's
+     decision) — so a convert key that reused it would work only where previews
+     do, which is a surprise nobody could predict from the key's name. Loading
+     also means the bytes written come from the file on disk rather than from
+     whatever is in memory, which is the property a person expects of a
+     converter.
+
+  **Where §2.13's notice goes — the decision this phase exists for.** The
+  flattening line becomes a **result line in the pane**, in the status row that
+  Phase 4 already reserved above the image and that every other explanation
+  already uses. `convert_to` returns `Written { path, flattened }` rather than
+  printing anything, so the pure-ish seam stays free of I/O exactly as
+  `src/convert.rs:encode` did, and `src/tui.rs:Browser` renders it. **The
+  condition is §2.13's unchanged** — the buffer *having* an alpha channel, not
+  any pixel being transparent — because a coarser rule an implementer cannot get
+  subtly wrong was the whole argument, and Phase 3's exit gate recorded what it
+  costs: every SVG→JPEG conversion announces a flattening, transparency or not.
+
+- **Exit gate:** five items runnable by `cargo test` with no terminal, and one a
+  human checks. `convert_to` touches the filesystem but never the terminal, which
+  is what puts items 2–4 in the machine half; temp output goes in
+  `CARGO_TARGET_TMPDIR`, as Phase 3's gate established.
+
+  1. **`destination` reproduces decision 2.** `a/photo.svg` + `Png` →
+     `a/photo.png`; `a/photo.jpg` + `Jpeg` → `a/photo.jpg` — **the source
+     itself**, which is decision 4's input; `a/archive.tar.gz` + `Png` →
+     `a/archive.tar.png`, the corner that makes this worth an assertion; and a
+     source with no extension gains one.
+  2. **The overwrite guard leaves the destination byte-for-byte unchanged.**
+     Phase 3's item 5 restated: with the destination already present and
+     `force = false`, `convert_to` errors with `OutputExists` and the file's
+     bytes are **identical** to what they were. With `force = true` the bytes
+     change. The unchanged-bytes half is the one worth asserting — a guard that
+     errors *after* truncating would pass a weaker check.
+  3. **Converting onto the source is refused by name**, `OutputIsSource`, and
+     **not** `OutputExists` — the distinction decision 4 exists for, and the only
+     evidence from outside that the two cases were separated at all.
+  4. **The notice fires on the channel, not on the pixels.** `convert_to` on an
+     RGBA source with **no transparent pixel at all** returns
+     `flattened = true` for a JPEG target, and `false` for a PNG target on the
+     same source. That is §2.13's coarse rule asserted where it is easy to
+     "improve" it into a per-pixel scan, and the PNG half is what stops the flag
+     being hard-wired to the source's colour type.
+  5. **Phases 1–4, 6 and 7's gates still pass, unmodified.** All 80 assertions —
+     16, 11, 12, 13, 14 and 14 — green with no edits to any of the six files.
+  6. **Human, in iTerm2:** in the browser, `P` and `J` on a highlighted image
+     write the file beside it and the pane says so, naming the path. A
+     transparent source converted with `J` reports the flattening **in the pane**
+     — the line that would have painted over the screen as stderr, which is the
+     whole reason this phase exists. Pressing `P` on a name that already exists
+     refuses and says so; pressing it again writes. The written file opens in a
+     normal image viewer and is the picture that was on screen. **And the
+     terminal is undisturbed throughout** — no stray text over the layout, which
+     is the failure mode §2.13's `eprintln!` would have produced.
+
+  Tests land in `tests/gate_phase5.rs`; the six existing gate files are not
+  edited, which is item 5. Item 6 amends `scripts/gate-phase4.sh`, on the
+  grounds Phase 6 recorded.
+
+- **Close-out:** `rules/tui.md` gains the keys, the destination rule and the
+  confirm state; `rules/convert.md` gains the second caller of `encode` and the
+  fact that the stderr note now has a sibling that is not stderr — its `covers`
+  names "the note that announces it", which becomes half a story.
+  `README.md`'s Browsing section gains the keys and the destination rule.
+  **The `max_lines` raises are deliberately not predicted here**: this spec's
+  close-outs have underestimated them four times running, most recently in a
+  close-out that had warned itself not to, so the rule is to raise the cap once
+  the prose exists rather than to guess it now.
 
 ### Phase 6 — the bare path draws inline, and the preview sits in the middle
 *Produces the observable: yes — both halves of it. The first change is about how

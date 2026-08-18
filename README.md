@@ -212,7 +212,8 @@ asserted, so it is a script instead of a test.
 
 ```sh
 bash scripts/gate8.sh          # Phase 3's item 8 — needs iTerm2, asks you questions
-bash scripts/gate-phase4.sh    # the human items for Phases 4-8 and 10
+bash scripts/gate-phase4.sh    # the checks no machine can make
+bash scripts/gate-phase4.sh 9  # ...or just one section; --list shows them
 bash scripts/gate-phase9.sh    # Phase 9's, and it needs no terminal
 ```
 

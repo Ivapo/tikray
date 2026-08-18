@@ -66,7 +66,7 @@ phases:
     by: tkr-001
   - name: "Phase 12 — wrap-around, a wider preview, and a scroll thumb"
     reviewed: 2026-08-18
-    shipped: null
+    shipped: 2026-08-18
     cut: null
     by: null
   - name: "Phase 13 — the gate trim, with the tripwire its licence requires"

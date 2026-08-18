@@ -34,7 +34,14 @@
 # its pane, gate item 5 says outright that no test can see one, and this is the
 # only place it is caught.
 #
-# Run it in an iTerm2 window:   bash scripts/gate-phase4.sh
+# Run it in an iTerm2 window:
+#
+#   bash scripts/gate-phase4.sh          all eleven sections
+#   bash scripts/gate-phase4.sh 9        only section 9
+#   bash scripts/gate-phase4.sh 2,9      sections 2 and 9
+#   bash scripts/gate-phase4.sh --list   what the sections are
+#
+# A phase adding four checks should cost four answers, not thirty-eight.
 #
 # Nothing here writes into the repo. Following scripts/gate8.sh — a gate someone
 # else could check is the point of a gate, see CLAUDE.md.
@@ -43,6 +50,27 @@ set -uo pipefail
 
 REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TIKRAY="$REPO/target/debug/tikray"
+
+# Which sections to run. No argument means all of them; `9` or `2,9` means only
+# those. This exists because the complaint was never that the script is long —
+# it is that a phase adding four checks makes a person re-answer thirty-eight.
+# Trimming was tried twice and cut twice (§0); it removes three questions and
+# leaves the re-verification untouched, which is the actual cost.
+WANT="${1:-all}"
+section=0
+want() {
+  section=$((section + 1))
+  [ "$WANT" = all ] && return 0
+  case ",$WANT," in *",$section,"*) return 0 ;; *) return 1 ;; esac
+}
+
+if [ "$WANT" = --list ] || [ "$WANT" = -l ]; then
+  printf 'Sections in %s:\n' "$(basename "${BASH_SOURCE[0]}")"
+  grep -E '^bold "[0-9]+\.' "${BASH_SOURCE[0]}" | sed 's/^bold "/  /; s/"$//'
+  printf '\nRun all:  bash %s\nRun one:  bash %s 9\nRun some: bash %s 2,9\n' \
+    "$0" "$0" "$0"
+  exit 0
+fi
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
@@ -110,6 +138,7 @@ dim "building…"
 # ---------------------------------------------------------------------------
 # Item 6a — the browser, and the property no test can see
 # ---------------------------------------------------------------------------
+if want; then
 
 echo
 bold "1. tikray — the browser, opened where you are"
@@ -144,6 +173,7 @@ dim "   file or two that are not images."
 ask "Were ONLY visible images and directories listed, with a hidden count?"
 ask "Did '.' show everything, and '.' again put the filter back?"
 ask "After toggling, was the SAME file still highlighted?"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 6 — a bare path dispatches on what the path IS
@@ -151,6 +181,7 @@ ask "After toggling, was the SAME file still highlighted?"
 #
 # This section is what Phase 6 changed. Phase 4 asked whether `tikray <path>`
 # opened the browser at that path's directory; the right answer is now no.
+if want; then
 
 echo
 bold "2. tikray <file> — draws inline, indented, and gives the prompt back"
@@ -175,6 +206,7 @@ pause "ready — narrow the window first"
 ( cd "$REPO" && "$TIKRAY" samples/landscape.png )
 echo
 ask "Did it still fit on one screen, unwrapped, with the indent intact?"
+if want; then
 
 echo
 bold "3. tikray <dir> — browses there"
@@ -186,6 +218,7 @@ snapshot
 echo
 check_stty
 ask "Did it open the browser on samples/?"
+if want; then
 
 echo
 bold "4. tikray --browse <file> — the browser, that file highlighted"
@@ -200,10 +233,13 @@ snapshot
 echo
 check_stty
 ask "Did it open the browser on samples/ with landscape.svg HIGHLIGHTED?"
+fi
 
 # ---------------------------------------------------------------------------
 # Item 6c — view still does what it did
+fi
 # ---------------------------------------------------------------------------
+if want; then
 
 echo
 bold "5. tikray view <path> — unchanged"
@@ -212,14 +248,17 @@ echo
 ( cd "$REPO" && "$TIKRAY" view samples/landscape.png )
 echo
 ask "Did it draw inline and return to the prompt, taking no screen?"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 8 — zoom
+fi
 # ---------------------------------------------------------------------------
 #
 # Zoom is the first feature that deliberately pushes against the pane border, so
 # the border property Phases 4, 6 and 7 each asserted is what this section is
 # really testing.
+if want; then
 
 echo
 bold "6. + and - — zoom, in three centred steps"
@@ -244,6 +283,7 @@ ask "Did + enlarge the image and - shrink it back, with 0 returning to fit?"
 ask "Did it stay INSIDE its border at every level, on every image you tried?"
 ask "Is the 24x24 icon actually usable at 4x, where it used to be a speck?"
 ask "Did moving to another file reset the zoom to fit?"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 5 — converting from inside the browser
@@ -252,6 +292,7 @@ ask "Did moving to another file reset the zoom to fit?"
 # The phase exists because §2.13's flattening notice is an eprintln! and stderr
 # inside the alternate screen paints over the TUI. This section is where that
 # line has to appear in the pane instead.
+if want; then
 
 echo
 bold "7. P and J — convert from inside the browser"
@@ -285,10 +326,12 @@ echo
 dim "   Opening $CONV so you can check the written files are real images."
 open "$CONV" 2>/dev/null
 ask "Do the written files open in Preview and look right?"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 10 — dot-entries, and the one check that its exemption was wired in
 # ---------------------------------------------------------------------------
+if want; then
 
 echo
 bold "8. hidden entries, and --browse on one"
@@ -343,10 +386,12 @@ echo
 dim "   Two more of Phase 10's clauses, in the browser you just used:"
 ask "Does 'a' now do nothing at all — the old key is retired?"
 ask "Does the footer read '. filtered' and '. all (n hidden)'?"
+fi
 
 # ---------------------------------------------------------------------------
 # Phase 12 — wrap-around, the wider preview, and the scroll thumb
 # ---------------------------------------------------------------------------
+if want; then
 
 echo
 bold "9. wrap-around, a wider preview, and the scroll thumb"
@@ -380,10 +425,12 @@ echo
 check_stty
 ask "Did a thumb appear on the list's right-hand border?"
 ask "Did it reach the BOTTOM of the border when the list reached its last row?"
+fi
 
 # ---------------------------------------------------------------------------
 # Item 7a — Ctrl-C, which raw mode makes a keypress
 # ---------------------------------------------------------------------------
+if want; then
 
 echo
 bold "10. Ctrl-C inside the TUI — a KeyEvent, not a signal"
@@ -398,10 +445,12 @@ snapshot
 echo
 check_stty
 ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
+fi
 
 # ---------------------------------------------------------------------------
 # Item 7b — a real SIGINT, which runs no Drop at all
 # ---------------------------------------------------------------------------
+if want; then
 
 echo
 bold "11. kill -INT — the other mechanism entirely"
@@ -422,6 +471,7 @@ wait "$signaller" 2>/dev/null
 echo
 check_stty
 ask "Did it exit by itself, leaving a usable terminal and a visible cursor?"
+fi
 
 # ---------------------------------------------------------------------------
 # Verdict

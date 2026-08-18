@@ -64,6 +64,11 @@ phases:
     shipped: null
     cut: 2026-08-18
     by: tkr-001
+  - name: "Phase 12 — wrap-around, a wider preview, and a scroll thumb"
+    reviewed: null
+    shipped: null
+    cut: null
+    by: null
 
 extends: null
 supersedes: null
@@ -2800,6 +2805,83 @@ named one invisible to all 104 assertions and all surviving sections.
   phase. **No `rules/` file changes** — none declares a script in `sources`.
   **`CLAUDE.md` needs no change**: it says a phase carries a gate someone else
   could check, which is what this phase is in service of.
+
+### Phase 12 — wrap-around, a wider preview, and a scroll thumb
+*Produces the observable: yes, at one remove — a wider preview pane means a
+larger image, which is §1's observable directly; the other two decide whether a
+person can find the image they want without fighting the list.*
+
+**Appended 2026-08-18, from using the installed tool and from reading `PanEx`,
+a sibling TUI in this account whose conventions this phase and the next borrow
+deliberately.** Three mechanical changes, separated from the visual ones (Phase
+13) because these are gateable and those are taste: a phase whose gate is almost
+entirely human should not hold up one whose gate is not.
+
+- **Scope:** `src/tui.rs`.
+
+  | File | Entry points |
+  |---|---|
+  | `src/tui.rs` | `+ pub fn step(current: usize, len: usize, forward: bool) -> usize` — wrap-around, pure; `+ pub fn scroll_thumb(len: usize, viewport: usize, offset: usize) -> Option<(usize, usize)>` — the thumb's start row and height, pure; `+ pub struct Panes` and `+ pub fn panes(area: Rect) -> Panes` — the layout extracted so the split and the image rectangle can both be asserted |
+  | `src/tui.rs` | `Browser::key`'s four movement arms call `step`; `Browser::render` calls `panes` and draws the thumb |
+
+  Three decisions:
+
+  1. **Navigation wraps at both ends, and it needs its own function because
+     ratatui's does not.** `ListState::select_next` is `saturating_add` and
+     `select_previous` is `saturating_sub` — measured in `ratatui-widgets 0.3.2`
+     — so both stick. `step` wraps: down from the last row goes to the first, up
+     from the first goes to the last. **`g`/`G` (Home/End) do not wrap** and are
+     untouched: they are absolute jumps, and a wrapping jump is a contradiction.
+     An empty listing returns 0 rather than dividing by zero.
+  2. **The list takes 30% where it took 35%**, so the preview gains five points.
+     Deliberately modest: the ask was "a bit larger", and the list still has to
+     show filenames — at 158 columns that is 47 cells, at 80 columns 24. **A
+     max-width list was considered and not taken** (`Max(40)` plus `Min(0)`,
+     which on a wide terminal stops the list growing and gives everything else to
+     the image): it is the better rule on a large window and worse on a small
+     one, where it takes half the screen. Recorded so a later phase can adopt it
+     against a measurement rather than rediscover it.
+  3. **The thumb follows `PanEx`'s implementation rather than inventing one**,
+     including its rounding: length is `track · viewport / len` clamped to at
+     least 1, and the start is `offset · travel` rounded to nearest so the thumb
+     sits flush at the top and bottom rather than drifting a row short. Drawn
+     **over the border** in the list pane, which is why it costs no width.
+     `None` when everything fits — an indicator that is always present indicates
+     nothing.
+
+- **Exit gate:** three items runnable by `cargo test` with no terminal, and one a
+  human checks.
+
+  1. **`step` wraps at both ends and nowhere else.** In a list of 5:
+     `step(4, 5, true) == 0` and `step(0, 5, false) == 4` — the two wraps;
+     `step(2, 5, true) == 3` and `step(2, 5, false) == 1` — the ordinary case;
+     `step(0, 1, true) == 0` for a single row, which wraps onto itself; and
+     `step(0, 0, …) == 0` for an empty listing, which is the division this would
+     otherwise do by zero.
+  2. **`scroll_thumb` reproduces `PanEx`'s arithmetic**, and returns `None` when
+     `len <= viewport` — nothing to indicate when everything fits. The thumb is
+     **flush at both ends**: at `offset = 0` it starts at row 0, and at the
+     maximum offset it ends on the last row of the track. That pair is the one
+     the rounding exists for, and asserting it is what stops a "simplification"
+     to truncating division landing the thumb a row short of the bottom
+     for every list in the program.
+  3. **`panes` puts the split where decision 2 says and hands `pane_view` the
+     same rectangle it does today.** For an 80×24 area the list is 24 columns
+     and the image rectangle is what `Browser::render` returns — extracting the
+     layout must not move the image by a cell, since Phases 6, 7 and 8 all key
+     their arithmetic to that rectangle. This is the item that would catch a
+     refactor that changed the picture while claiming to change the split.
+  4. **Human, in iTerm2:** `↓` on the last entry goes to the first and `↑` on the
+     first goes to the last; a directory longer than the pane shows a thumb that
+     reaches the bottom when the list does, and no thumb when it fits; and the
+     preview is visibly wider without the filenames being cramped.
+
+  Tests land in `tests/gate_phase12.rs`; the nine existing gate files are not
+  edited. Item 4 amends `scripts/gate-phase4.sh`.
+
+- **Close-out:** `rules/tui.md` — the layout is now a named function and the
+  movement keys wrap. `README.md`'s Browsing section describes the keys.
+  **`CLAUDE.md` needs no change**; it names no key and no layout.
 
 <!--
 The review record is a sibling file, not a section: it lives at

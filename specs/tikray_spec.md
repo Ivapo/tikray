@@ -35,7 +35,7 @@ phases:
     cut: null
     by: null
   - name: "Phase 6 — the bare path draws inline, and the preview sits in the middle"
-    reviewed: null
+    reviewed: 2026-08-17
     shipped: null
     cut: null
     by: null
@@ -1348,7 +1348,7 @@ independent, so the gate keeps them separate.
   | File | Entry points |
   |---|---|
   | `src/tui.rs` | `+ pub fn centre_offset(image: (u32,u32), pane: (u16,u16), cell: (u32,u32)) -> (u16,u16)` — the offset in **cells**, pure |
-  | `src/tui.rs` | `+ pub fn pane_offset(img: &DynamicImage, pane: (u16,u16), cell: Option<(u32,u32)>) -> (u16,u16)` — the glue, mirroring `pane_sequence` |
+  | `src/tui.rs` | `+ pub fn pane_offset(img: &DynamicImage, pane: (u16,u16), cell: Option<(u32,u32)>) -> (u16,u16)` — the glue, mirroring `pane_sequence`. **`(0, 0)` where `pane_sequence` returns `Ok(None)`**: it returns a bare pair rather than an `Option` because there is nothing to place in that state, and Phase 4's gate item 5 already pins that no bytes are emitted |
   | `src/cli.rs` | `+ browse: bool` on `Cli`, part 1's surface selector |
   | `src/main.rs` | part 1's type-dispatch, in `run` |
 
@@ -1425,7 +1425,7 @@ independent, so the gate keeps them separate.
   4. **`--browse` parses, and parses beside everything Phase 4 pinned.**
      `["tikray", "--browse", "a.png"]` → `browse` set with the path, no
      subcommand; `["tikray", "--browse"]` → `browse` set with no path, which is
-     decision 3's "the bare `tikray`, not an error"; and
+     decision 4's "the bare `tikray`, not an error"; and
      `["tikray", "view", "--browse", "a.png"]` → **an error**, since `--browse`
      is not `view`'s flag and a surface selector on the invocation that already
      names its surface means nothing.
@@ -1436,11 +1436,19 @@ independent, so the gate keeps them separate.
      Following `tests/gate.rs:run_without_iterm2`, with stdout on a pipe and both
      terminal variables cleared — `tikray <a PNG fixture>` exits non-zero
      reporting **not a tty** (the inline surface's refusal, §2.7, which is also
-     item-1-of-decision-1's evidence that the branch runs detection at all);
+     decision 1's evidence that the branch runs detection at all);
      `tikray <a directory>` exits non-zero reporting **no screen** (the browser's
      refusal); and `tikray <a missing path>` reports **neither**, failing at the
      stat before either surface starts. Three assertions, no terminal, and they
      fail if the dispatch is wired backwards.
+
+     **The two refusals share a 38-character prefix, so the assertion must key on
+     the half where they diverge** — `"nowhere to draw an image"` against
+     `"no screen to browse in"`, never on `"not a terminal"`, which both begin
+     with and which would pass whichever way the dispatch was wired. The item
+     would then assert nothing while looking as though it asserted everything:
+     the same shape §2.8, §2.11 and §2.13 each record, arriving this time in the
+     test rather than in the code.
   6. **Phases 1–4's gates still pass, unmodified.** All 52 assertions — 16, 11,
      12 and 13 — green with no edits to any of the four files. **Item 3 of
      Phase 4's gate is the load-bearing one**: it asserts what `["tikray",

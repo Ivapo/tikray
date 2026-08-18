@@ -84,6 +84,16 @@ pub enum TikrayError {
     /// The destination exists and `--overwrite` was not given.
     OutputExists { path: PathBuf },
 
+    /// The destination *is* the source (§2.13's TUI surface).
+    ///
+    /// Reachable only from the browser, where the format is a key rather than a
+    /// path: pressing the PNG key on a PNG asks for a re-encode of the file in
+    /// place, which is destructive and achieves nothing. A CLI user typing
+    /// `convert a.png a.png` meets [`TikrayError::OutputExists`] first, and it
+    /// is a different mistake — so this says so rather than reporting that the
+    /// file it is about to destroy already exists.
+    OutputIsSource { path: PathBuf },
+
     /// Writing the encoded bytes to the destination failed.
     Write {
         path: PathBuf,
@@ -199,6 +209,12 @@ impl fmt::Display for TikrayError {
                 "{} already exists — pass --overwrite to replace it",
                 path.display()
             ),
+            TikrayError::OutputIsSource { path } => write!(
+                f,
+                "{} is the file itself — converting it in place would re-encode \
+                 it over itself and change nothing",
+                path.display()
+            ),
             TikrayError::Write { path, source } => {
                 write!(f, "could not write {}: {source}", path.display())
             }
@@ -227,7 +243,8 @@ impl std::error::Error for TikrayError {
             | TikrayError::OutputUndetermined { .. }
             | TikrayError::OutputNotAllowed { .. }
             | TikrayError::OutputSvg { .. }
-            | TikrayError::OutputExists { .. } => None,
+            | TikrayError::OutputExists { .. }
+            | TikrayError::OutputIsSource { .. } => None,
         }
     }
 }

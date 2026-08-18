@@ -6,8 +6,9 @@ sources:
 covers: >
   the output allowlist as a two-variant type, how the target format is resolved
   and why not through the image crate, the composite-onto-white arithmetic and
-  the note that announces it, and the order run takes its two cheap refusals in
-max_lines: 60
+  the two channels that announce it, and the order run takes its two cheap
+  refusals in
+max_lines: 75
 generated: 2026-08-17
 ---
 
@@ -64,6 +65,13 @@ existing.png` reports `OutputExists`, not `Io`. There is no tty check on this
 path — convert writes a file, not escape bytes.
 
 `run` dispatches four invocations across three surfaces now, and this arm is the
-one that writes a file. The stderr note belongs to it: inside the TUI's alternate
-screen an `eprintln!` writes over the display, so converting from there is a
-separate problem and not yet solved.
+one that writes a file. **The stderr note belongs to it alone.** The browser
+converts too — `src/tui.rs:convert_to` is `encode`'s second caller — and it
+cannot print: inside the alternate screen an `eprintln!` paints over the
+display. It returns the same fact as a flag instead, and the pane says it.
+
+Two channels, **one rule**: both fire on the buffer *having* an alpha channel,
+never on a pixel being transparent. `src/convert.rs:flatten` is called by
+`encode` and by nothing else — a pre-flattened buffer reports `has_alpha() ==
+false`, so calling both would be redundant rather than wrong, and the TUI reports
+what `encode` did rather than doing it twice.

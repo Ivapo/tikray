@@ -1,0 +1,8 @@
+<!-- Every pixel opaque: the rect covers the whole viewBox. Rasterizing still
+     yields Rgba8, so the buffer HAS an alpha channel with nothing transparent
+     in it, which is what §2.13's coarse rule needs to be asserted against.
+     Not named *.png deliberately: the PNG half of Phase 5's gate item 4 would
+     then derive a destination equal to its own source. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8">
+  <rect x="0" y="0" width="8" height="8" fill="#3b6ea5"/>
+</svg>

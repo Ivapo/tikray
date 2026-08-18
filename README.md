@@ -117,8 +117,16 @@ anyway.
 
 `tikray` with no arguments — or with a directory, or with `--browse` — opens a
 file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`) move, `⏎` (or `→`)
-enters a directory, `←` goes back up, and `q` quits. The highlighted image is
+enters a directory, `←` goes back up, and `q` quits. (The convert keys below are
+capitals because `j` is already *down*.) The highlighted image is
 drawn **centred** in the pane, scaled to it by the same rule below.
+
+**`P` writes a PNG and `J` a JPEG** beside the highlighted file, same name, new
+extension — `photo.svg` becomes `photo.png`. The pane says what was written, and
+says when alpha had to be flattened onto white, since a JPEG cannot carry it.
+Writing over an existing file refuses and asks: press the same key again to
+replace it. Converting a file onto itself is refused outright — it would
+re-encode it over itself and change nothing.
 
 **The list shows what tikray can draw** — images and directories — and the footer
 says how many entries are hidden. `a` shows everything and `a` again puts the

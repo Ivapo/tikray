@@ -88,7 +88,7 @@ check_stty() {
 # Preflight
 # ---------------------------------------------------------------------------
 
-bold "tkr-001 Phases 4 and 6 — the human gate items"
+bold "tkr-001 Phases 4, 5, 6 and 7 — the human gate items"
 echo
 
 if [ "${TERM_PROGRAM:-}" != "iTerm.app" ] && [ "${LC_TERMINAL:-}" != "iTerm2" ]; then
@@ -214,11 +214,52 @@ echo
 ask "Did it draw inline and return to the prompt, taking no screen?"
 
 # ---------------------------------------------------------------------------
+# Phase 5 — converting from inside the browser
+# ---------------------------------------------------------------------------
+#
+# The phase exists because §2.13's flattening notice is an eprintln! and stderr
+# inside the alternate screen paints over the TUI. This section is where that
+# line has to appear in the pane instead.
+
+echo
+bold "6. P and J — convert from inside the browser"
+dim "   Working in a scratch copy of samples/, so nothing in the repo changes."
+CONV="${TMPDIR:-/tmp}/tikray-gate-phase5"
+rm -rf "$CONV"; mkdir -p "$CONV"
+cp "$REPO/samples/translucent.svg" "$CONV/" 2>/dev/null
+cp "$REPO/samples/landscape.png" "$CONV/" 2>/dev/null
+echo
+dim "   In the browser, please do all four:"
+dim "     · highlight translucent.svg and press J — it writes translucent.jpg"
+dim "     · press J again — it refuses, because that file now exists"
+dim "     · press J a third time — the refusal offered a confirm, so it writes"
+dim "     · highlight landscape.png and press P — refused: that IS the file"
+echo
+bold "   The line to watch is the flattening notice. It must appear IN THE PANE."
+bold "   If it lands on the terminal as stray text over the layout, that is the"
+bold "   exact failure this phase was split out of Phase 4 to prevent."
+pause "ready"
+
+snapshot
+( cd "$CONV" && "$TIKRAY" )
+echo
+check_stty
+ask "Did J write translucent.jpg, with the pane naming the file?"
+ask "Did the pane say alpha was flattened onto white — IN THE PANE, not over it?"
+ask "Did the second press refuse, and the third replace it?"
+ask "Did P on landscape.png refuse as 'the file itself', not 'already exists'?"
+ask "Did the new file appear in the list without navigating away?"
+echo
+dim "   Opening $CONV so you can check the written files are real images."
+open "$CONV" 2>/dev/null
+ask "Do the written files open in Preview and look right?"
+
+# ---------------------------------------------------------------------------
 # Item 7a — Ctrl-C, which raw mode makes a keypress
 # ---------------------------------------------------------------------------
 
 echo
-bold "6. Ctrl-C inside the TUI — a KeyEvent, not a signal"
+bold "7. Ctrl-C inside the TUI — a KeyEvent, not a signal"
 dim "   crossterm's raw mode goes through cfmakeraw, which clears ISIG, so the"
 dim "   terminal never turns Ctrl-C into SIGINT here. tikray handles it as quit."
 echo
@@ -236,7 +277,7 @@ ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "7. kill -INT — the other mechanism entirely"
+bold "8. kill -INT — the other mechanism entirely"
 dim "   A real signal default-terminates without unwinding, so no Drop runs and"
 dim "   nothing would restore the terminal. signal-hook is pinned for this one"
 dim "   case, and turns it into the loop's other exit."

@@ -36,6 +36,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph};
 
+use crate::convert::{self, Output};
 use crate::display;
 use crate::error::TikrayError;
 use crate::term;
@@ -58,7 +59,7 @@ fn keys(all: bool, hidden: usize) -> String {
     } else {
         String::new()
     };
-    format!(" ↑/↓ move   ⏎ open   ← up{filter}   q quit ")
+    format!(" ↑/↓ move   ⏎ open   ← up{filter}   P/J convert   q quit ")
 }
 
 /// Why there is no preview, for each standing condition.
@@ -154,6 +155,87 @@ pub fn pane_offset(img: &DynamicImage, pane: (u16, u16), cell: Option<(u32, u32)
         Some(fitted) => centre_offset(fitted, pane, cell),
         None => (0, 0),
     }
+}
+
+/// What a conversion wrote, and whether it had to flatten to do it.
+///
+/// Carried out of [`convert_to`] rather than printed, because §2.13 put the
+/// notice in `src/main.rs:run` as an `eprintln!` and stderr inside the
+/// alternate screen paints straight over the display. Public fields: the gate
+/// reads `flattened` from another crate.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Written {
+    pub path: PathBuf,
+    pub flattened: bool,
+}
+
+/// Where `P` or `J` would write, given the highlighted file.
+///
+/// `set_extension` on the source, so `photo.svg` + [`Output::Png`] is
+/// `photo.png`. It replaces only the final component, so `archive.tar.gz`
+/// becomes `archive.tar.png` — the same answer `tikray convert` gives, which is
+/// why the two surfaces agree.
+pub fn destination(source: &Path, target: Output) -> PathBuf {
+    let mut dest = source.to_path_buf();
+    dest.set_extension(match target {
+        Output::Png => "png",
+        // `resolve` accepts both spellings inbound, so which one comes back out
+        // is a choice rather than a default.
+        Output::Jpeg => "jpg",
+    });
+    dest
+}
+
+/// Write the highlighted file out in `target`, beside itself.
+///
+/// Touches the filesystem and **never the terminal**, which is what puts it in
+/// the machine half of the gate.
+///
+/// The order is **source check, exists check, write**, and `force` skips only
+/// the second. Letting a confirm through the first would perform in place
+/// exactly the destructive re-encode that check exists to prevent — on the
+/// second press of a key whose first press said the wrong thing.
+///
+/// The source test is not string equality. On a case-insensitive filesystem a
+/// source named `photo.PNG` derives `photo.png`: a different string naming the
+/// same file, which string equality misses and a confirm would then overwrite.
+/// Both sides must resolve for the answer to be *same file* — a double failure
+/// is a race, and falls through to the exists check, which refuses anyway.
+///
+/// It loads from disk rather than taking the browser's decoded buffer, which is
+/// `None` on a terminal that is not iTerm2 — a convert key that worked only
+/// where previews do is a surprise nobody could predict from its name.
+pub fn convert_to(source: &Path, target: Output, force: bool) -> Result<Written, TikrayError> {
+    let dest = destination(source, target);
+
+    let same_file = dest == source
+        || (dest.exists()
+            && match (std::fs::canonicalize(&dest), std::fs::canonicalize(source)) {
+                (Ok(a), Ok(b)) => a == b,
+                _ => false,
+            });
+    if same_file {
+        return Err(TikrayError::OutputIsSource { path: dest });
+    }
+    if !force && dest.exists() {
+        return Err(TikrayError::OutputExists { path: dest });
+    }
+
+    let img = crate::load(source)?;
+    // §2.13's condition, unchanged on this surface: the buffer *having* an alpha
+    // channel, not any pixel being transparent. `encode` composites on exactly
+    // the same test, so this reports what it did rather than doing it twice.
+    let flattened = target == Output::Jpeg && img.color().has_alpha();
+    let bytes = convert::encode(&img, target)?;
+    std::fs::write(&dest, bytes).map_err(|source| TikrayError::Write {
+        path: dest.clone(),
+        source,
+    })?;
+
+    Ok(Written {
+        path: dest,
+        flattened,
+    })
 }
 
 /// Browse from `start`, previewing whatever is highlighted.
@@ -390,6 +472,12 @@ struct Browser {
     all: bool,
     /// How many entries the filter is holding back, for the footer.
     hidden: usize,
+    /// A convert that refused because the destination exists, waiting for the
+    /// same key again. Keyed to *(path, format)* so a confirm that outlives its
+    /// keypress still matches the file it was pressed on.
+    pending: Option<(PathBuf, Output)>,
+    /// What the last convert did, shown until the highlighted entry changes.
+    result: Option<String>,
 }
 
 impl Browser {
@@ -430,6 +518,8 @@ impl Browser {
             previews,
             all,
             hidden,
+            pending: None,
+            result: None,
         };
         browser.reload_preview();
         Ok(browser)
@@ -488,6 +578,15 @@ impl Browser {
 
     /// The one line above the image: what is highlighted, or why nothing is.
     fn status(&self, cell: Option<(u32, u32)>) -> String {
+        // The result outranks the standing conditions, which is a change to this
+        // precedence rather than an addition to it. `NOT_ITERM2` fires
+        // unconditionally when previews are off — and that is exactly the
+        // terminal the convert keys go out of their way to keep working on, so
+        // appending a branch below would write a file and say nothing about it
+        // on the one surface with no picture to confirm it by.
+        if let Some(result) = &self.result {
+            return result.clone();
+        }
         if !self.previews {
             return NOT_ITERM2.to_string();
         }
@@ -506,28 +605,103 @@ impl Browser {
     }
 
     fn key(&mut self, code: KeyCode) {
+        // The pending confirm is a licence to overwrite, so any key that is not
+        // the one that set it clears it. The result line is looser and clears
+        // when the highlighted entry changes: a message about a file you just
+        // wrote has to survive the arrow key you press to go and look at it.
+        if !matches!(code, KeyCode::Char('P') | KeyCode::Char('J')) {
+            self.pending = None;
+        }
+
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.list.select_previous();
+                self.result = None;
                 self.reload_preview();
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 self.list.select_next();
+                self.result = None;
                 self.reload_preview();
             }
             KeyCode::Home | KeyCode::Char('g') => {
                 self.list.select_first();
+                self.result = None;
                 self.reload_preview();
             }
             KeyCode::End | KeyCode::Char('G') => {
                 self.list.select_last();
+                self.result = None;
                 self.reload_preview();
             }
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.descend(),
             KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => self.ascend(),
             KeyCode::Char('a') => self.toggle_all(),
+            // Uppercase because `j` is Down and `g`/`G` are Home/End. The shift
+            // also suits a key that writes to disk.
+            KeyCode::Char('P') => self.convert(Output::Png),
+            KeyCode::Char('J') => self.convert(Output::Jpeg),
             _ => {}
         }
+    }
+
+    /// Write the highlighted file out in `target`, beside itself.
+    ///
+    /// The order is **write, refresh, then set the result**, and it is
+    /// load-bearing: refreshing goes through the same listing call a navigation
+    /// makes, and navigation is what clears the result line — so setting the
+    /// result first would destroy the message inside the keypress that produced
+    /// it, and the pane would say nothing about a file it had just written.
+    fn convert(&mut self, target: Output) {
+        let Some(entry) = self.selected() else { return };
+        if entry.is_dir {
+            return;
+        }
+        let source = entry.path.clone();
+        let dest = destination(&source, target);
+
+        // A second press of the same key on the same destination is the confirm.
+        let force = self.pending.as_ref() == Some(&(dest.clone(), target));
+        self.pending = None;
+
+        match convert_to(&source, target, force) {
+            Err(err @ TikrayError::OutputExists { .. }) => {
+                self.pending = Some((dest, target));
+                self.result = Some(format!("{err} — press again to replace it"));
+            }
+            Err(err) => self.result = Some(err.to_string()),
+            Ok(written) => {
+                self.refresh();
+                let name = written.path.file_name().map_or_else(
+                    || written.path.display().to_string(),
+                    |n| n.to_string_lossy().into_owned(),
+                );
+                // §2.13's line, on the surface where stderr would paint over
+                // the display. The condition is the buffer *having* an alpha
+                // channel, so an opaque SVG announces it too — the coarse rule
+                // working as written, which Phase 3's exit gate recorded.
+                self.result = Some(if written.flattened {
+                    format!("wrote {name} — alpha flattened onto white")
+                } else {
+                    format!("wrote {name}")
+                });
+            }
+        }
+    }
+
+    /// Re-list the current directory, keeping the highlight, without touching
+    /// the result line.
+    fn refresh(&mut self) {
+        let focus = self
+            .selected()
+            .and_then(|e| e.path.file_name().map(OsStr::to_os_string));
+        let Ok(listing) = entries(&self.dir, self.all) else {
+            return;
+        };
+        self.hidden = hidden_count(&self.dir, &listing, self.all);
+        self.list.select(Some(index_of(&listing, focus.as_deref())));
+        self.entries = listing;
+        self.reload_preview();
     }
 
     /// Enter the highlighted directory. A file is left alone — opening it is
@@ -562,6 +736,7 @@ impl Browser {
             Ok(listing) => {
                 let index = index_of(&listing, focus.as_deref());
                 self.hidden = hidden_count(dir, &listing, self.all);
+                self.result = None;
                 self.dir = dir.to_path_buf();
                 self.entries = listing;
                 self.list.select(Some(index));

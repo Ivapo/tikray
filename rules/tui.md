@@ -8,9 +8,9 @@ covers: >
   the pane the image is drawn behind and why it survives a repaint, the cell
   arithmetic that sizes and centres it, what the list shows and what it hides,
   the four things that decide there is no preview, the draw-then-place ordering,
-  which surface each invocation reaches, and the two interruptions that need
-  different code
-max_lines: 140
+  which surface each invocation reaches, what the convert keys write and what
+  the pane says about it, and the two interruptions that need different code
+max_lines: 185
 generated: 2026-08-17
 ---
 
@@ -86,6 +86,41 @@ the moment the user is searching. The highlight follows by name through
 `src/tui.rs:index_of`, never by index: toggling changes how many rows precede it.
 An unreadable entry is not previewable, so it is hidden rather than raised.
 
+## Converting from the browser
+
+`P` writes PNG and `J` writes JPEG beside the highlighted file —
+`src/tui.rs:destination` is `set_extension` on the source, so `photo.svg`
+becomes `photo.png` and `archive.tar.gz` becomes `archive.tar.png`, the same
+answer `tikray convert` gives. `Output::Jpeg` spells itself `jpg`. **The keys are
+uppercase because `j` is Down and `g`/`G` are Home/End**, not for emphasis.
+
+`src/tui.rs:convert_to` orders it **source check, exists check, write**, and
+`force` skips only the second: a confirm exists to overwrite a *different* file,
+and letting it through the first would perform in place the destructive
+re-encode that check prevents. The source test is `std::fs::canonicalize`, not
+string equality — on a case-insensitive filesystem `photo.PNG` derives
+`photo.png`, a different string naming the same file — and both sides must
+resolve for the answer to be *same file*. It loads from disk rather than reusing
+`Browser::preview`, which is `None` off iTerm2, so the keys work where previews
+do not.
+
+Two pieces of transient state, clearing on **different** rules. The pending
+confirm is keyed to *(path, format)* and clears on any key that is not the one
+that set it — it is a licence to overwrite. The result line clears when the
+highlighted entry changes, because a message about a file you just wrote has to
+survive the arrow key you press to go and look at it.
+
+`convert_to` returns `Written { path, flattened }` and prints nothing: §2.13's
+notice is an `eprintln!` from `src/main.rs:run`, and stderr inside the alternate
+screen paints over the display. **The condition is unchanged on both surfaces** —
+the buffer *having* an alpha channel — so an opaque SVG announces a flattening
+too, which is the coarse rule working as written.
+
+After a write the listing refreshes and **then** the result is set. The natural
+refresh is `src/tui.rs:Browser::enter`, which is the navigation path, and
+navigation clears the result — so the other order destroys the message inside the
+keypress that produced it.
+
 ## Four ways there is no preview, and one refusal
 
 | Condition | What happens |
@@ -99,6 +134,13 @@ An unreadable entry is not previewable, so it is hidden rather than raised.
 Only the last is a refusal, and it names `view` and `convert` rather than
 `--force`, which is `view`'s escape hatch and buys a browser nothing. A `load`
 refusal is a line in the pane, never the end of the session.
+
+**A convert result outranks all of them.** `src/tui.rs:Browser::status` puts a
+pending result first, then the standing conditions, then the per-entry reason —
+because `NOT_ITERM2` fires unconditionally when previews are off, and that is
+exactly the terminal the convert keys go out of their way to serve. A result
+appended below would write a file and say nothing about it on the one surface
+with no picture to confirm it by.
 
 ## Draw, then place
 

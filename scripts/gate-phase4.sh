@@ -349,7 +349,7 @@ ask "Does the footer read '. filtered' and '. all (n hidden)'?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "11. wrap-around, a wider preview, and the scroll thumb"
+bold "9. wrap-around, a wider preview, and the scroll thumb"
 dim "   First samples/, which is six rows and so shows NO thumb:"
 dim "     · press ↑ on the first entry — it must go to the LAST"
 dim "     · press ↓ on the last entry — it must come back to the FIRST"
@@ -386,7 +386,7 @@ ask "Did it reach the BOTTOM of the border when the list reached its last row?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "12. Ctrl-C inside the TUI — a KeyEvent, not a signal"
+bold "10. Ctrl-C inside the TUI — a KeyEvent, not a signal"
 dim "   crossterm's raw mode goes through cfmakeraw, which clears ISIG, so the"
 dim "   terminal never turns Ctrl-C into SIGINT here. tikray handles it as quit."
 echo
@@ -404,7 +404,7 @@ ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "13. kill -INT — the other mechanism entirely"
+bold "11. kill -INT — the other mechanism entirely"
 dim "   A real signal default-terminates without unwinding, so no Drop runs and"
 dim "   nothing would restore the terminal. signal-hook is pinned for this one"
 dim "   case, and turns it into the loop's other exit."

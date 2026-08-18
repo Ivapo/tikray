@@ -2969,7 +2969,7 @@ is any *indication* that it scrolled — which is what the thumb below is.
      does, and is **absent in `samples/`** (6 rows), which is the contrast that
      shows `None` is reached rather than the thumb merely being invisible.
 
-     It appends as **§11** — the sections are independent, so the position
+     It appends as **§9** — the sections are independent, so the position
      carries nothing. And 60 rows fit on a window taller than about 63, where the
      check then fails **loudly** ("did a thumb appear?" — no) rather than passing
      silently, which is the safe direction for a margin to be wrong in.

@@ -1886,7 +1886,7 @@ neither worth its own review round — and the gate keeps them separate.
   `previewable` therefore composes `detect` with `src/load.rs:ALLOWED`, which is
   the same pairing `src/load.rs:load` performs.
 
-  Four decisions:
+  Six decisions:
 
   1. **Detection is by content, at the cost of an open and a 1024-byte read per
      entry per directory change.** Extension-based filtering is free and is
@@ -1905,6 +1905,17 @@ neither worth its own review round — and the gate keeps them separate.
      indistinguishable from an empty one, which is the failure that makes a
      hidden-by-default list worse than no list. Directories are never filtered —
      they are how you leave.
+
+     **CORRECTED 2026-08-18 — Phase 10 filters dot-directories, and the clause
+     carrying the reason is the one it demolishes.** Read by clause: *"they are
+     how you leave"* is false — leaving is `←`, not a row, since `..` is never
+     synthesised — and the bare claim *"directories are never filtered"* is what
+     survives, **narrowed to the previewability filter**, where it does still
+     hold: hide a directory for not being an image and you cannot descend into
+     it. So the exemption keeps its scope and loses its stated justification,
+     which is the opposite of how it first read. Phase 10's own scope originally
+     said "the half that survives is the half that had a reason"; that was
+     backwards and is corrected here rather than in place.
   3. **The selection survives the toggle by name, not by index.** Toggling
      changes how many rows precede the highlighted one, so an index kept across
      it lands on a different file — silently, and in a UI whose whole job is to
@@ -2394,17 +2405,23 @@ others, on a distinction with no rule behind it.
 
   | File | Entry points |
   |---|---|
-  | `src/tui.rs` | `entries` gains the dot rule; `Browser::key` binds `.` where it bound `a`; `keys` renders `.` |
+  | `src/tui.rs` | `entries` gains the dot rule; `+ pub fn entries_with(dir, all, keep)` — decision 3's exemption, with `entries` delegating so Phase 7's gate stays green; `Browser::key` binds `.` where it bound `a`; `keys` renders `.` |
 
   **Why Phase 7's exemption does not cover this, which is the argument the phase
   turns on.** Its decision 2 says *"directories are never filtered — they are how
   you leave"*, and that is right about **previewability**: hide a directory for
   not being an image and you cannot descend into it. It does not extend to the
-  dot rule, because **leaving is `←`, not a row** — `..` is deliberately never
-  synthesised (Phase 4) — so hiding `.git/` impedes no navigation whatever. The
-  reason that protected directories from one filter simply is not a reason
-  against the other, and checking that rather than assuming it is why this phase
-  is three lines instead of a redesign.
+  dot rule — but not for the reason first written here. **Leaving is `←`, not a
+  row** (`..` is never synthesised, Phase 4), so the *stated* justification is
+  simply false of dot-directories; the exemption survives as a bare claim scoped
+  to the previewability filter. Checking that rather than assuming it is why this
+  phase is three lines instead of a redesign.
+
+  **And "impedes no navigation" would overstate it**: hiding `.git/` impedes no
+  *leaving*, but it does impede *arriving* — you cannot descend into a
+  dot-directory from the browser until `.` is pressed, or name it on the command
+  line (decision 3). That is the intended cost, not an oversight, and it is the
+  price of the listing being useful at all on a home directory.
 
   Four decisions:
 
@@ -2421,14 +2438,60 @@ others, on a distinction with no rule behind it.
      refused one letter meaning three things, and two letters meaning one thing
      is the same vocabulary bloat from the other side. This retires a key that
      shipped in Phase 7, which is why that decision carries a dated note.
-  3. **An explicitly named path always opens, hidden or not.** `tikray
-     ~/.config` browses there and `tikray --browse ~/.x.png` highlights that
-     file, because **naming a path is a request and a listing is a heuristic** —
-     the same principle that makes `./view` the escape hatch for a file named
-     `view` (§2.9). Contents are then filtered normally, and the filter starts
-     **on** regardless of where you started: making the initial state depend on
-     the start path is a surprise the first time it happens.
-  4. **Ascending out of a hidden directory lands on the parent's first row, and
+
+     **Both footer states are pinned**, because Phase 7 pinned only the on-state
+     and the off-state's shipped wording stops being true: `src/tui.rs:keys`
+     renders `"images only"` when the filter is off, which is now half the story.
+     It becomes **`. filtered`** off and **`. all (12 hidden)`** on — the key
+     first in both, and neither claiming the filter is about images alone.
+  3. **An explicitly named path always opens, hidden or not — and the file half
+     needs a mechanism, not a claim.** `tikray ~/.config` browses there and
+     `tikray --browse ~/.x.png` highlights that file, because **naming a path is
+     a request and a listing is a heuristic** — the same principle that makes
+     `./view` the escape hatch for a file named `view` (§2.9).
+
+     The directory half is free: you are *inside* `~/.config`, and a directory is
+     never listed within itself. **The file half is not**, and as first drafted
+     this decision was self-falsifying: `src/tui.rs:Browser::open` sets the
+     directory and the name to focus, then lists with the filter **on**, which
+     drops `.x.png`, so `src/tui.rs:index_of` falls back to row 0 and the file
+     the user named is not highlighted. The sentence after it — the filter starts
+     on regardless — is what makes the example impossible.
+
+     So the listing gains one exemption: **the entry named on the command line is
+     listed even when the filter would hide it.** `entries` grows a sibling,
+
+     ```rust
+     pub fn entries_with(dir: &Path, all: bool, keep: Option<&OsStr>) -> Result<Vec<Entry>, TikrayError>
+     ```
+
+     and `entries(dir, all)` becomes `entries_with(dir, all, None)` — so Phase
+     7's gate item 6, which calls `entries`, stays green and unmodified. The
+     exemption is one entry, in one directory, at startup: navigate away and come
+     back and it is hidden like anything else, because by then it is a listing
+     again rather than a request. **The filter's state is untouched**, so `.`
+     still means what it means and the footer's count stays honest — which is why
+     this is preferable to starting with the filter off, the surprise this
+     decision rejects in its next breath.
+  4. **Toggling resets the zoom and the result line if — and only if — the
+     highlight actually moved.** Phase 8 states the invariant as *"resets when
+     the highlighted entry changes, and **only** then"*, and
+     `src/tui.rs:toggle_all` resets neither today. That was nearly harmless
+     because the highlight only jumped when sitting on a non-previewable file;
+     this phase makes it the common case, since **every dot-entry** now moves it.
+     So `toggle_all` compares the name it re-selects against the one it left and
+     resets both when they differ. Preserving a shipped invariant literally, at
+     the moment a phase makes its exception ordinary.
+  5. **A wholly-hidden directory says how many, not "empty".**
+     `src/tui.rs:reload_preview` reports *"empty directory"* when nothing is
+     selected, which after this phase is reachable for a directory that is
+     nothing of the sort — `~/.ssh` with the filter on. It becomes **"nothing to
+     show — 4 hidden, press `.`"** when the listing is empty but `hidden` is not.
+     Phase 7's decision 2 anticipated exactly this failure ("a filtered directory
+     of PDFs would otherwise be indistinguishable from an empty one") and
+     answered it with the footer count; this is the same answer at the one place
+     the pane asserts something false.
+  6. **Ascending out of a hidden directory lands on the parent's first row, and
      that is a named cost.** `src/tui.rs:index_of` falls back to the first entry
      when the name it is looking for is not in the listing, which is exactly what
      happens pressing `←` out of `~/.config` while the filter hides it. The
@@ -2436,7 +2499,7 @@ others, on a distinction with no rule behind it.
      arbitrary, and turning the filter off automatically is decision 3's rejected
      surprise. Recorded so it is a known papercut rather than a bug report.
 
-- **Exit gate:** three items runnable by `cargo test` with no terminal, and one a
+- **Exit gate:** four items runnable by `cargo test` with no terminal, and one a
   human checks. The keys live in the private `Browser`, so they are human-gated
   as Phases 4, 5 and 8's were; the filtering is a public function and is not.
 
@@ -2453,25 +2516,60 @@ others, on a distinction with no rule behind it.
      `tests/gate_phase7.rs`'s three membership tests mean exactly what they meant
      before. Asserted here rather than assumed, because a fixture added later
      with a leading dot would silently change what that shipped gate proves.
-  3. **Phases 1–9's gates still pass, unmodified**, all 97 assertions across
+  3. **`entries_with` lists the named entry that the filter would hide.** On the
+     same tree, `entries_with(dir, false, Some(".secret.svg"))` contains
+     `.secret.svg` **and still excludes** `.git/`, `.cache/` and `.DS_Store` — one
+     exemption, not a filter that gave up. And `entries(dir, false)` is unchanged
+     by the sibling existing, which is what keeps Phase 7's gate item 6 green.
+     This is decision 3's file half, and it is machine-checkable precisely
+     because the exemption was made a listing rule rather than a `Browser`
+     behaviour.
+  4. **Phases 1–9's gates still pass, unmodified**, all 97 assertions across
      eight files plus `scripts/gate-phase9.sh`.
-  4. **Human, in iTerm2:** `tikray ~` opens on a listing with **no dot-entries**,
+  5. **Human, in iTerm2:** `tikray ~` opens on a listing with **no dot-entries**,
      `.` reveals them and `.` again hides them, and `a` now does nothing. The
-     hidden count in the footer covers both kinds. `tikray ~/.config` opens
-     there despite being hidden, and `←` out of it lands on the parent's first
-     row (decision 4).
+     hidden count in the footer covers both kinds, and the footer reads
+     `. filtered` / `. all (n hidden)`. `tikray ~/.config` opens there despite
+     being hidden; `←` out of it lands on the parent's first row (decision 6).
+     A directory whose contents are wholly hidden says how many, not "empty"
+     (decision 5). And zoom into an image, then press `.` — if the highlight
+     moves, the zoom returns to fit (decision 4).
+
+     **Item 5 amends `scripts/gate-phase4.sh`**, on the evidence-versus-procedure
+     grounds Phase 6 recorded, rather than being run once and forgotten. Its
+     section 1 currently instructs the human to press `a`, which is the key this
+     phase retires — so the script is wrong the moment this ships, and amending
+     it is not optional.
 
   Tests land in `tests/gate_phase10.rs` with their own fixture tree built in
   `CARGO_TARGET_TMPDIR` — dot-entries are not added to `tests/fixtures/`,
   precisely so item 2 stays true.
 
-- **Close-out:** `rules/tui.md`'s listing section and its `a`; `README.md`'s
-  Browsing section, which names `a` twice; `scripts/gate-phase4.sh`, whose
-  section 1 instructs the human to press `a`; and `src/tui.rs:entries`' doc
-  comment, which carries Phase 7's "directories are never filtered" verbatim and
-  feeds `/sync-rules`. `tikray.md`'s phase count. **`CLAUDE.md` needs no
-  change** — it names no key, which is the test Phase 9 had to learn to state
-  correctly.
+- **Close-out**, and it is longer than the change because a key name is spread
+  across six places:
+
+  | Artifact | Why |
+  |---|---|
+  | `rules/tui.md` | the listing section, and `a` |
+  | `README.md`'s Browsing section | names `a` twice |
+  | `scripts/gate-phase4.sh` | section 1 tells the human to press `a` — scheduled under gate item 5, not here, because it is *part of* that item |
+  | `src/tui.rs:entries` doc | carries Phase 7's "directories are never filtered" verbatim, and feeds `/sync-rules` |
+  | `src/tui.rs:Browser`'s `all` field doc | *"`a` turns the filter off. It persists across directory changes…"* — the second doc comment naming the retired key, and the one a sweep for `entries` alone misses |
+  | `tikray.md` | phase count |
+
+  **`README.md`'s status banner is also stale, and by two phases, not one.** It
+  reads *"Status: complete. All seven phases of `tkr-001` are built"* — Phases 8
+  and 9 each updated `tikray.md`'s count and each missed the README's. Its gate
+  script list is stale too: it names `gate8.sh` and `gate-phase4.sh` as "Phases 4
+  and 6's human items" and does not mention `scripts/gate-phase9.sh`. Recorded at
+  this length because **two consecutive close-outs made the same omission**,
+  which makes it a property of the sweep rather than an accident: `tikray.md` is
+  where a phase count is looked for, and the README's banner is not.
+
+  **`CLAUDE.md` needs no change** — it names no key. (Phase 9 got this verdict
+  right for a false reason; the test is whether the file describes *what tikray
+  does* at a level this phase changes, and a banner naming no invocation and no
+  binding does not.)
 
 <!--
 The review record is a sibling file, not a section: it lives at

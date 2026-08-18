@@ -41,7 +41,7 @@ phases:
     by: null
   - name: "Phase 7 — the inline draw is indented, and the browser lists what it can show"
     reviewed: 2026-08-17
-    shipped: null
+    shipped: 2026-08-17
     cut: null
     by: null
 

@@ -45,7 +45,7 @@ phases:
     cut: null
     by: null
   - name: "Phase 8 — zoom in the browser, in three centred steps"
-    reviewed: null
+    reviewed: 2026-08-18
     shipped: null
     cut: null
     by: null
@@ -2090,18 +2090,25 @@ though not in the direction that question expected.
   `L > 1`, with `s` the scale §2.6 defines: the visible region is
   `floor(pane / (s·L))`, **floored at 1** and clamped to the source, centred;
   the emitted size is `round(region · s·L)`, **floored at 1** and clamped to the
-  pane.
+  pane. **`zoom_view` is `None` exactly where `fit` is `None`**, at every level
+  and not only at 1 — it inherits that partiality at level 1 by construction, and
+  it is stated for `L > 1` because gate item 3 sweeps a domain and a sweep needs
+  one.
 
   - The floor at 1 is round 1's B2 and restores `fit`'s own `max(1, …)`: a
     4000×1 source in a 640×720 pane gives `s = 0.16`, and `round(1 × 0.16) = 0`
     at every level — an illegal `height=0px`, against a floor Phase 1's gate pins
     with the words *"a zero dimension is not a legal argument value"*.
-  - The clamp to the pane is **defence in depth, not load-bearing**, and saying
-    so is the correction: with the region floored, `region ≤ pane/(s·L)` implies
-    `region · s·L ≤ pane`, so the clamp cannot fire. The 721-into-720 spill this
-    phase recorded came from an earlier *round-on-region* formulation that was
-    never adopted. Kept because it is one `min` against a spill, dropped from
-    the argument because it was overstated.
+  - The clamp to the pane is **defence in depth, and it does fire — just not
+    where this phase first claimed.** Two corrections deep, so both are kept:
+    the 721-into-720 spill originally recorded came from a *round-on-region*
+    formulation never adopted, and the replacement claim that flooring makes the
+    clamp unreachable is *also* wrong — the floor-at-1 above creates the corner
+    it excludes. Measured at round 2: with a pane axis under 4 pixels the region
+    is raised above `pane/(s·L)` and the clamp is what saves it, 38 such cases in
+    a sweep. Unreachable with real cell geometry, since a one-cell pane is 16×36
+    px. The lesson is the one this phase keeps relearning: **the arithmetic's
+    edges are found by sweeping, not by proving.**
 
 - **Exit gate:** five items runnable by `cargo test` with no terminal, and one a
   human checks.
@@ -2120,6 +2127,13 @@ though not in the direction that question expected.
      precisely the binary64 cases decision 3 exists for, and this is the phase's
      own regression criterion — the whole existing TUI runs through the level-1
      path.
+
+     **It is tautological, deliberately.** Decision 3 makes `zoom_view` *return*
+     `fit`'s pair at level 1, so this sweep tests that the special case is still
+     there rather than that two computations agree. That is exactly the
+     protection wanted — a later refactor that "simplifies" the special case away
+     turns this red — but a reader should not mistake it for an independent check
+     of the arithmetic. Item 1's literals are that.
   3. **No emitted dimension is zero, and nothing exceeds its bounds.** Swept over
      sources, panes and all three levels: the emitted size is ≥ 1 in both axes,
      never exceeds the pane, and the crop rect never exceeds the source. A
@@ -2127,8 +2141,13 @@ though not in the direction that question expected.
      an illegal argument — and because both of round 1's arithmetic blockers were
      found by sweeping and not by reasoning. Includes the 4000×1 case by name.
   4. **`pane_view` agrees with the shipped pair at level 1.** For a buffer, pane
-     and cell size, `pane_view(img, pane, cell, 1)` returns exactly
-     `(pane_offset(img, pane, cell), pane_sequence(img, pane, cell)?)`. That ties
+     and cell size where a preview is drawn at all, `pane_view(img, pane, cell,
+     1)` yields an offset equal to `pane_offset(img, pane, cell)` and bytes equal
+     to `pane_sequence(img, pane, cell)`'s `Some`. Stated as two equalities
+     rather than one tuple because the two signatures do not line up —
+     `Result<Option<((u16,u16), Vec<u8>)>>` against `((u16,u16),
+     Option<Vec<u8>>)` — and the assertion an implementer writes is the pair of
+     them. That ties
      the new composed path to the two shipped functions rather than leaving them
      to drift, and it is the machine half of decision 2 — the placement half of
      which is otherwise visible only to a human. `pane_view` returns `Ok(None)`

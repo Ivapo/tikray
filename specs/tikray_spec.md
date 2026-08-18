@@ -55,7 +55,7 @@ phases:
     cut: null
     by: null
   - name: "Phase 10 — hide dot-entries, and rename the toggle to `.`"
-    reviewed: null
+    reviewed: 2026-08-18
     shipped: null
     cut: null
     by: null

@@ -2628,7 +2628,7 @@ named one invisible to all 104 assertions and all surviving sections.
 
   | § | What it asks | Why it goes |
   |---|---|---|
-  | 3 | `tikray <dir>` browses **there** | the property moves rather than dies: §1 stops `cd`-ing and passes `"$REPO/samples"` as an argument, so the same launch tests it at zero extra cost |
+  | 3 | `tikray <dir>` browses **there** | the property moves rather than dies: §1 runs `cd "$REPO"` and passes `samples` as an argument, so the same launch tests it at zero extra cost. **Both halves are required** — the `cd` because otherwise the script inherits the invoker's directory and a person running it from inside `samples/` gets a check that passes vacuously, and a new question naming the property, because otherwise only the invocation moved and nothing asks about it |
   | 4 | `--browse <file>` highlights it | subsumed by §8 **once §8 is fixed** — see decision 2 |
   | 5 | `tikray view <path>` unchanged | `src/main.rs:run`'s bare-file branch calls `src/main.rs:view(false, &path)`, **literally the same function** the subcommand calls, so §2 already exercises it including `detect_iterm2` |
 
@@ -2638,8 +2638,8 @@ named one invisible to all 104 assertions and all surviving sections.
   | Added to | What was missing |
   |---|---|
   | §1 | the directory argument, per the table above |
-  | §8 | Phase 10's item 5 also names `tikray ~/.config` opening there and `←` landing on the parent's first row; neither was in the script |
-  | §6 | Phase 8's item 6 names "converting does **not** reset the zoom", which nothing asks |
+  | §8 | Phase 10's item 5 also names a hidden directory opening and `←` landing on the parent's first row; neither was in the script. **Pointed at §8's own fixture rather than at `~/.config`**, which assumes a directory the operator may not have — the visible subdirectory added for decision 2 holds only hidden entries, so descending into it, reading its count, and ascending back tests all three in one walk |
+  | §7 | Phase 8's item 6 names "converting does **not** reset the zoom", which nothing asks. **It goes in §7, not §6**, and the reason is a real defect in the first attempt to place it: `src/tui.rs:Browser::convert` calls `refresh` **only on success**, and the only successful convert available in `$REPO/samples` writes a new file *into the repo* — `icon.svg` + `P` creates `samples/icon.png`, while every other target refuses with `OutputExists` or `OutputIsSource` and never refreshes at all. So the check would have been silent **and** would have broken the script's own header invariant, "nothing here writes into the repo". §7 already works in a scratch copy and already presses `J` on `translucent.svg`: zoom first, convert, then ask |
 
   Three decisions:
 
@@ -2661,6 +2661,14 @@ named one invisible to all 104 assertions and all surviving sections.
      A **subdirectory is added** to §8's fixture (directories sort first), so row
      0 is not the answer and "highlighted, not merely the right directory" —
      Phase 6's item 7 calls that "not a near miss" — is actually tested.
+
+     **It must be a *visible* subdirectory**, which is worth pinning because a
+     dot-named one is the tempting choice in a fixture whose whole subject is
+     dot-entries — and Phase 10's own rule would then filter it, the listing
+     would drop back to one row, and this defect would return intact. It also
+     earns its keep twice more: filled with only hidden entries it becomes the
+     concrete subject for §8's otherwise subjectless "did it say how many?", and
+     the target for the ascend check below.
   3. **Shipped spec text is not touched, and the precedent for editing this
      script does less work here than in Phases 6, 7, 8 and 10.** Each of those
      amended it because the code moved and the script would otherwise be *wrong*.
@@ -2690,6 +2698,14 @@ named one invisible to all 104 assertions and all surviving sections.
      justification is "something cheaper checks that now", and a rename or a
      deletion evaporates it **silently**, leaving a human gate that stopped
      asking and no machine gate that started.
+
+     Two precisions, both learned by having the tripwire examined: grepping
+     `src/main.rs` for `view` matches `Command::View`, `fn view` and the call
+     site indiscriminately, so the assertion is on the **call** — the literal
+     `view(false, &path)` inside `run` — and nothing weaker. And **§8's second
+     fixture entry is guarded too**: it is the single line that makes §8 subsume
+     §4, so it is exactly the thing that can rot silently, which is what item 1
+     exists to catch.
 
      **A name-in-file grep passes on a commented-out or `#[ignore]`d test**, so
      item 1 is a tripwire rather than a proof — stated because the first draft

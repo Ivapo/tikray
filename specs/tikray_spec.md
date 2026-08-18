@@ -2,7 +2,7 @@
 id: tkr-001
 title: tikray
 status: accepted
-last_updated: 2026-08-17
+last_updated: 2026-08-18
 note: >
   A single Rust binary that shows an image inline in iTerm2 and writes it back
   out in another format — the decode/rasterize/encode core, the OSC 1337
@@ -2017,61 +2017,93 @@ though not in the direction that question expected.
 
   | File | Entry points |
   |---|---|
-  | `src/display.rs` | `+ pub fn sequence_at(img: &DynamicImage, size: (u32,u32)) -> Result<Vec<u8>, TikrayError>` — emits exactly `size`, **without `fit`**; `sequence` is unchanged and keeps Phase 1's gate item 2 |
-  | `src/tui.rs` | `+ pub struct Zoom(u8)` or equivalent with `1 / 2 / 4`; `+ pub fn zoom_view(native: (u32,u32), pane: (u32,u32), level: u32) -> ((u32,u32,u32,u32), (u32,u32))` — pure: crop rect in source pixels, and the size to emit; `Browser` gains the level; `pane_sequence` grows a level-aware sibling |
+  | `src/display.rs` | `+ pub fn scale(native: (u32,u32), viewport: (u32,u32)) -> f64` — §2.6's `min(W/w, H/h, 1.0)`, exposed so it has one implementation; `+ pub fn sequence_at(img: &DynamicImage, size: (u32,u32)) -> Result<Vec<u8>, TikrayError>` — emits exactly `size`, **without `fit`**, in `sequence`'s argument format |
+  | `src/tui.rs` | `+ pub fn zoom_view(native: (u32,u32), pane: (u32,u32), level: u32) -> Option<((u32,u32,u32,u32), (u32,u32))>` — pure: crop rect in source pixels, and the size to emit; `+ pub fn pane_view(img: &DynamicImage, pane: (u16,u16), cell: Option<(u32,u32)>, level: u32) -> Result<Option<((u16,u16), Vec<u8>)>, TikrayError>` — **offset and bytes from one call**; `Browser` gains the level |
+
+  **`src/display.rs:fit` and `src/display.rs:sequence` are unchanged**, as are
+  `src/tui.rs:pane_sequence` and `src/tui.rs:pane_offset` — four shipped
+  functions with gate items on them, none of which this phase edits. `fit` and
+  `sequence` may delegate to the new `scale` and `sequence_at` respectively,
+  since that is refactoring behind identical behaviour, and their gates say so.
 
   **The terminal will not clip, so tikray crops.** §2.14's row 8 measured it: an
   image larger than its region spills across the layout rather than being cut
   off, because OSC 1337 draws at the cursor. So zoom cannot be "emit a bigger
   number" — the payload itself must become the visible region.
-  `image::DynamicImage::crop_imm` does it, and everything downstream is unchanged:
-  the cropped buffer goes through the same encode, the terminal does the same
-  rendering, and tikray still resamples nothing (§2.3).
+  `image::DynamicImage::crop_imm` does it, preserving the `DynamicImage` variant
+  so §2.1's waist is not quantized, and everything downstream is unchanged: the
+  same encode, the same rendering by the terminal, no resampling in tikray (§2.3).
 
-  Five decisions:
+  Seven decisions:
 
   1. **`fit`'s clamp is a default, not an invariant, and this is the one thing
-     allowed past it.** This is the decision the phase turns on and it is *not*
-     obvious: crop the source and the crop is **smaller** than the pane, so
-     `src/display.rs:fit` refuses to scale it up and the image draws at crop size
-     instead of filling the pane — zoom silently does nothing but crop. Hence
-     `sequence_at`, which takes the emitted size directly. `fit` and `sequence`
-     are untouched, so every automatic path keeps the clamp and Phase 1's gate
-     item 2 stays green; only a keypress reaches the new one.
-  2. **Levels are multiples of *fit*: 1×, 2×, 4×.** Not absolute ratios (1:1,
-     2:1), because fit already varies with the pane, so "twice the size of what I
-     am looking at" is predictable where "100%" is not. Three levels because the
-     ask was "a few", and because the fourth step of a centre-only zoom shows so
-     little of the image that it argues for pan instead — which this phase does
-     not have.
-  3. **Centred, with no pan, and the cost is named rather than discovered.** At
+     allowed past it.** The decision the phase turns on, and *not* obvious: crop
+     the source and the crop is **smaller** than the pane, so `fit` refuses to
+     scale it up and the image draws at crop size instead of filling the pane —
+     zoom silently degrades to a crop. Hence `sequence_at`, which takes the
+     emitted size directly. Only a keypress reaches it.
+  2. **One call returns the offset *and* the bytes, because the alternative
+     spills.** This is round 1's B1 and it is the reason `pane_view` exists.
+     `src/tui.rs:Session::frame` calls two functions per frame, and
+     `src/tui.rs:pane_offset` computes `fit`'s pair internally — so at 2× a
+     1200×800 preview emits `(640,720)`, twenty cell-rows, while `pane_offset`
+     still answers `(0,4)` from `fit`'s `(640,427)`. Twenty rows placed four rows
+     down ends **four rows past a twenty-row pane**: §2.14's spill, produced by
+     the one phase deliberately pushing against the border, with every machine
+     gate item green. Phase 6 built `pane_offset` so "the wrong call cannot be
+     made"; this phase changes what the right call *is*, so it must make the new
+     pairing equally unbreakable rather than document it.
+  3. **`L = 1` is the shipped path by construction, not by arithmetic.** Round
+     1's B3: the rule is stated over a real-valued scale, and `floor(pane / s)`
+     lands on the wrong side whenever the ratio is not exactly representable in
+     binary64 — measured, 32 of 240 sampled sizes crop a row they should not,
+     including every 48–55 × 1003 source. So `zoom_view` **returns the whole
+     source and `fit`'s pair at level 1**, as a special case written down rather
+     than hoped for. Everything that ships today runs through that path, so it is
+     made true structurally and gate item 2 sweeps it rather than sampling it.
+  4. **Levels are multiples of *fit*: 1×, 2×, 4×**, saturating at both ends —
+     `+` at 4× stays 4×, `-` at 1× stays 1×. Not absolute ratios (1:1, 2:1),
+     because fit already varies with the pane, so "twice the size of what I am
+     looking at" is predictable where "100%" is not. Three levels because the ask
+     was "a few", and because a fourth step of a centre-only zoom shows so little
+     that it argues for pan instead.
+  5. **Centred, with no pan, and the cost is named rather than discovered.** At
      2× a person sees a quarter of the image and at 4× a sixteenth, always the
-     middle. That is enough to answer *is this sharp* and useless for *what is in
-     that corner*. Pan is not taken here because the arrow keys drive the list
-     and giving them a second, mode-dependent meaning is a larger decision than
-     the scaling is; it is a candidate for a later phase, weighed against use of
-     this one rather than against the imagination of it.
-  4. **The level resets to 1× when the highlighted entry changes.** A zoom
-     carried onto the next file shows a stranger's middle with no indication why,
-     and the browser's job is to say what you are looking at. It is the same
-     rule, and the same reason, as Phase 5's result line.
-  5. **The upscaling is the terminal's, and SVG is not re-rasterized.** iTerm2
+     middle: enough to answer *is this sharp*, useless for *what is in that
+     corner*. Pan is not taken because the arrow keys drive the list and giving
+     them a second, mode-dependent meaning is a larger decision than the scaling
+     is. A candidate for a later phase, weighed against use of this one.
+  6. **The level resets to 1× when the highlighted entry changes — and only
+     then.** The obvious home is `src/tui.rs:Browser::reload_preview`, and that
+     is wrong: `src/tui.rs:Browser::refresh` calls it after a `P`/`J` convert,
+     where the highlighted entry has *not* changed, so the zoom would collapse
+     on a keypress that has nothing to do with it. The reset belongs to the
+     selection-changing arms, beside Phase 5's result line, which clears on
+     exactly the same event for exactly the same reason.
+  7. **The upscaling is the terminal's, and SVG is not re-rasterized.** iTerm2
      scales the cropped payload, so an SVG at 4× is a blocky 4× raster rather
-     than a sharp re-render — see OQ-8's residue. Named here so it is a known
-     limit of this phase rather than a defect found later, and so the phase that
-     wants to fix it knows the cost: keeping the `usvg` tree or the source bytes
-     alive past `src/load.rs:load`.
+     than a sharp re-render — OQ-8's residue. Named so it is a known limit rather
+     than a defect found later, with the cost of fixing it written down: keeping
+     the `usvg` tree or the source bytes alive past `src/load.rs:load`.
 
-  **The arithmetic, since it bit once already.** With `s = fit`'s scale and a
-  level `L`, the visible source region is `floor(pane / (s·L))` **clamped to the
-  source**, centred; the emitted size is `round(region · s·L)` **clamped to the
-  pane**. Both clamps are load-bearing and the second is not decorative: with
-  `round` on the region and no clamp on the output, a 1200×800 image in a 640×720
-  pane at 4× emits **721px into a 720px pane** — one pixel of spill, which is
-  §2.14's hazard reached by rounding. Measured while drafting, before it was
-  written down as a gate.
+  **The arithmetic, which bit twice while this was being written.** For
+  `L > 1`, with `s` the scale §2.6 defines: the visible region is
+  `floor(pane / (s·L))`, **floored at 1** and clamped to the source, centred;
+  the emitted size is `round(region · s·L)`, **floored at 1** and clamped to the
+  pane.
 
-- **Exit gate:** four items runnable by `cargo test` with no terminal, and one a
+  - The floor at 1 is round 1's B2 and restores `fit`'s own `max(1, …)`: a
+    4000×1 source in a 640×720 pane gives `s = 0.16`, and `round(1 × 0.16) = 0`
+    at every level — an illegal `height=0px`, against a floor Phase 1's gate pins
+    with the words *"a zero dimension is not a legal argument value"*.
+  - The clamp to the pane is **defence in depth, not load-bearing**, and saying
+    so is the correction: with the region floored, `region ≤ pane/(s·L)` implies
+    `region · s·L ≤ pane`, so the clamp cannot fire. The 721-into-720 spill this
+    phase recorded came from an earlier *round-on-region* formulation that was
+    never adopted. Kept because it is one `min` against a spill, dropped from
+    the argument because it was overstated.
+
+- **Exit gate:** five items runnable by `cargo test` with no terminal, and one a
   human checks.
 
   1. **`zoom_view` reproduces the arithmetic**, in a 640×720 pane. A **24×24**
@@ -2081,35 +2113,50 @@ though not in the direction that question expected.
      in this project that **exceeds its source**, which is decision 1 visible in
      a literal. A **1200×800** source: `L=2` → crop `(300,62,600,675)`, emit
      `(640,720)`; `L=4` → crop `(450,231,300,337)`, emit `(640,719)`.
-  2. **`L=1` is exactly what ships today.** 1200×800 in that pane → crop
-     `(0,0,1200,800)` and emit **`(640,427)`** — byte-identical to the literal
-     `tests/gate_phase6.rs` already asserts for `pane_offset`, and to Phase 4's
-     item 2. This is the regression item that matters: the whole existing TUI
-     runs through the level-1 path, so if it is not a no-op the phase has broken
-     everything it did not intend to touch.
-  3. **The emitted size never exceeds the pane, and the crop never exceeds the
-     source.** A property, asserted over a swept range of sources, panes and all
-     three levels rather than a handful of examples — because the failure it
-     guards is a spill, which no test can see once it happens, and because the
-     one-pixel case above was found by sweeping and not by reasoning.
-  4. **Phases 1–7's gates still pass, unmodified.** All 89 assertions — 16, 11,
+  2. **`L=1` is exactly what ships today, swept rather than sampled.** For
+     **every** source size in a swept range against that pane, `zoom_view(…, 1)`
+     returns the whole source and a pair equal to `src/display.rs:fit`'s. A
+     single literal cannot carry this item: 1200×800 divides exactly and hides
+     precisely the binary64 cases decision 3 exists for, and this is the phase's
+     own regression criterion — the whole existing TUI runs through the level-1
+     path.
+  3. **No emitted dimension is zero, and nothing exceeds its bounds.** Swept over
+     sources, panes and all three levels: the emitted size is ≥ 1 in both axes,
+     never exceeds the pane, and the crop rect never exceeds the source. A
+     property rather than examples, because the failure it guards is a spill or
+     an illegal argument — and because both of round 1's arithmetic blockers were
+     found by sweeping and not by reasoning. Includes the 4000×1 case by name.
+  4. **`pane_view` agrees with the shipped pair at level 1.** For a buffer, pane
+     and cell size, `pane_view(img, pane, cell, 1)` returns exactly
+     `(pane_offset(img, pane, cell), pane_sequence(img, pane, cell)?)`. That ties
+     the new composed path to the two shipped functions rather than leaving them
+     to drift, and it is the machine half of decision 2 — the placement half of
+     which is otherwise visible only to a human. `pane_view` returns `Ok(None)`
+     wherever `pane_sequence` does.
+  5. **Phases 1–7's gates still pass, unmodified.** All 89 assertions — 16, 11,
      12, 13, 9, 14 and 14 — green with no edits to any of the seven files.
-  5. **Human, in iTerm2:** `+` enlarges the previewed image and `-` shrinks it
-     back, `0` returns to fit, and the level **stays inside the pane at every
-     step** — the border property Phases 4, 6 and 7 each asserted, now with the
+  6. **Human, in iTerm2:** `+` enlarges the previewed image and `-` shrinks it
+     back, `0` returns to fit, and the image **stays inside the pane at every
+     level** — the border property Phases 4, 6 and 7 each asserted, now with the
      one feature deliberately pushing against it. A 24×24 icon at 4× is visibly
-     large where it used to be a speck, which is OQ-8 answered in the place a
-     person can see it. Moving to another file returns to fit.
+     large where it used to be a speck, which is OQ-8 answered where a person can
+     see it. Moving to another file returns to fit; converting with `P` or `J`
+     does **not** (decision 6).
 
   Tests land in `tests/gate_phase8.rs`; the seven existing gate files are not
-  edited, which is item 4. Item 5 amends `scripts/gate-phase4.sh` again.
+  edited, which is item 5. Item 6 amends `scripts/gate-phase4.sh` again.
 
-- **Close-out:** `rules/tui.md` gains the levels, the crop rule and the reset;
-  `rules/iterm2-display.md` gains `sequence_at` beside `sequence` and the fact
-  that the clamp is now escapable; `README.md` gains the keys, and its Sizing
-  section says outright that **Tikray never upscales**, which stops being true of
-  the browser. `max_lines` raises are not predicted — see Phase 5's close-out for
-  why.
+- **Close-out:** `rules/tui.md` gains the levels, the crop rule, the one-call
+  pairing and the reset; `rules/iterm2-display.md` gains `scale` and
+  `sequence_at` beside `fit` and `sequence`, and the fact that the clamp is now
+  escapable. `src/tui.rs:keys` renders the footer binding list, so `+`/`-`/`0`
+  join it — user-facing, and Phase 7 named it for the same reason.
+  `README.md` gains the keys, **and its Sizing section says outright that
+  "Tikray never upscales"**, which stops being true of the browser. `tikray.md`
+  says "All seven phases … are built" and "Rough scope (all built)", which an
+  eighth phase falsifies. **`CLAUDE.md` needs no change** — it names no
+  invocation and no key. `max_lines` raises are not predicted; see Phase 5's
+  close-out for why.
 
 <!--
 The review record is a sibling file, not a section: it lives at

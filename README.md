@@ -124,9 +124,9 @@ anyway.
 `tikray` with no arguments — or with a directory, or with `--browse` — opens a
 file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`) move and **wrap
 around** at both ends, `⏎` (or `→`) enters a directory, `←` goes back up, and `q`
-quits. A list longer than the pane shows a scroll thumb on its border. (The convert keys below are
-capitals because `j` is already *down*.) The highlighted image is
-drawn **centred** in the pane, scaled to it by the same rule below.
+quits. A list longer than the pane shows a scroll thumb on its border. The
+highlighted image is drawn **centred** in the pane, scaled to it by the same rule
+above. (The convert keys below are capitals because `j` is already *down*.)
 
 **`+` and `-` zoom** the preview through three levels — fit, 2×, 4× — and `0`
 returns to fit. Zooming crops to the centre of the image, because the terminal
@@ -140,8 +140,8 @@ Writing over an existing file refuses and asks: press the same key again to
 replace it. Converting a file onto itself is refused outright — it would
 re-encode it over itself and change nothing.
 
-**The list shows what tikray can draw**, and hides what your shell hides — images and directories — and the footer
-says how many entries are hidden. `.` shows everything and `.` again puts the
+**The list shows what tikray can draw and hides what your shell hides** — images
+and directories, with the footer saying how many entries are held back. `.` shows everything and `.` again puts the
 filter back; the setting follows you into subdirectories. Hidden entries — the
 dot-prefixed ones — are held back by the same key, directories included. What
 counts as an image is decided by **reading each file**, not by its extension, so
@@ -155,8 +155,6 @@ terminal that is not iTerm2, or one that does not report its size in pixels.
 **In every one of those the browser still runs** — the file list is useful on
 its own. The one refusal is stdout not being a terminal, since then there is no
 screen to browse in at all.
-
-Converting from inside the browser is not built yet.
 
 ### Converting
 

@@ -9,9 +9,10 @@ covers: >
   arithmetic that sizes and centres it, what the list shows and what it hides,
   the four things that decide there is no preview, the draw-then-place ordering,
   which surface each invocation reaches, what the convert keys write and what
-  the pane says about it, the three zoom levels and why they crop, and the two
-  interruptions that need different code
-max_lines: 230
+  the pane says about it, the three zoom levels and why they crop, how the
+  highlight moves and when the thumb appears, and the two interruptions that
+  need different code
+max_lines: 250
 generated: 2026-08-18
 ---
 
@@ -29,7 +30,10 @@ so the diff never mentions them — an image behind a hole in the layout. It die
 when a widget claims those cells, and when too big for its region it does not
 clip, it **spills**.
 
-So `src/tui.rs:Browser`'s render leaves the image rectangle empty and puts its
+So `src/tui.rs:panes` is the layout as one pure function — the list takes 30%, and
+extracting it is what lets a gate assert the image rectangle at all, since
+Phases 6–8 key their arithmetic to it at runtime while their own gates use
+synthetic constants. `src/tui.rs:Browser`'s render leaves the image rectangle empty and puts its
 one explanation line in a row above it. That separation lets `src/tui.rs:blank`
 paint the rectangle directly: ratatui cannot erase an image it does not know is
 there, and blanking a row it had just drawn into would desync its buffer.
@@ -217,6 +221,24 @@ path keeps `src/term.rs:detect_iterm2` on the branch; without it
 `tikray x.png > out.txt` fills a file with escape bytes. `src/tui.rs:Browser`
 stats again for its own start state, deliberately. `--force` modifies a surface
 so it stays on `view`; `--browse` selects one.
+
+## Moving, and the thumb
+
+`src/tui.rs:step` wraps at both ends, because ratatui's does not —
+`select_next` is `saturating_add`, `select_previous` is `saturating_sub`, and
+today's clamped *look* comes from the widget resetting an out-of-range selection
+at draw time. `g`/`G` keep `select_first`/`select_last`: absolute jumps, and a
+wrapping jump is a contradiction. Where `step` lands on the row it left — a
+listing of one — the caller returns early, since reloading a preview for an
+unchanged selection would clear the result and reset the zoom against an
+invariant that says those happen *only* when the highlight moves.
+
+`src/tui.rs:scroll_thumb` is `PanEx`'s arithmetic, rounding to nearest so the
+thumb lands flush at the bottom. Truncating agrees at both ends — the product is
+exact there — and differs mid-scroll, which is why `tests/gate_phase12.rs`
+asserts an offset in the middle. `None` when everything fits. It is drawn over
+the list's border, so it costs no width, and after `render_stateful_widget`,
+which is what writes the offset it reads.
 
 ## Two interruptions
 

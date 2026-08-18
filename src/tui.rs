@@ -47,7 +47,7 @@ const POLL: Duration = Duration::from_millis(100);
 /// The keys, in the footer. Short enough that it needs no second row.
 ///
 /// The hidden count joins them here rather than in the list pane's border title,
-/// which is the obvious home and the wrong one: that title is 35% of the window
+/// which is the obvious home and the wrong one: that title is 30% of the window
 /// wide, [`compact`] exists only because it is already tight enough to need
 /// `$HOME` rewritten to `~`, and ratatui truncates — so the count would vanish on
 /// exactly the narrow window where it matters. The footer spans the window.
@@ -75,6 +75,9 @@ fn keys(all: bool, hidden: usize, zoom: u32) -> String {
 /// Both are *standing*: they hold for every entry, not for the highlighted one,
 /// which is why they are reported before any per-entry reason. A user who reads
 /// "not an image" on file after file has been told the wrong thing.
+/// The scroll thumb, drawn over the list border so it costs no width.
+const SCROLL_THUMB: &str = "\u{2590}";
+
 const NOT_ITERM2: &str = "no preview: this does not look like iTerm2";
 const NO_PIXELS: &str = "no preview: this terminal reports no pixel size";
 
@@ -128,6 +131,88 @@ pub type ZoomView = (CropRect, (u32, u32));
 
 /// Where in the pane an image starts, in cells, and the bytes that draw it.
 pub type Placement = ((u16, u16), Vec<u8>);
+
+/// The layout, as one pure function so the split can be asserted.
+///
+/// Extracted in Phase 12 because Phases 6, 7 and 8 all key their arithmetic to
+/// `image` at runtime while their gates use synthetic constants — so nothing
+/// asserted the real rectangle, and widening the split is exactly the change
+/// that could move the picture while claiming to move only a border.
+pub struct Panes {
+    pub list: Rect,
+    pub status: Rect,
+    pub image: Rect,
+    pub footer: Rect,
+}
+
+/// Where everything goes, for a whole-window `area`.
+///
+/// The list takes **30%**: enough for 44 characters of filename at 158 columns
+/// and 21 at 80, once two borders and the highlight symbol come off. A
+/// max-width list (`Max(40)` + `Min(0)`) is better on a wide window and worse on
+/// a narrow one, where it takes half the screen — recorded as available, not
+/// taken.
+pub fn panes(area: Rect) -> Panes {
+    let [main, footer] = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+    let [left, right] =
+        Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)]).areas(main);
+    let inner = Block::bordered().inner(right);
+    let [status, image] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+    Panes {
+        list: left,
+        status,
+        image,
+        footer,
+    }
+}
+
+/// The next selection, wrapping at both ends.
+///
+/// ratatui's own movement does not wrap — `ListState::select_next` is
+/// `saturating_add` and `select_previous` is `saturating_sub`, and today's
+/// behaviour only *looks* clamped because the list widget resets an
+/// out-of-range selection at draw time. `g`/`G` keep `select_first`/`select_last`
+/// and do not come through here: they are absolute jumps, and a wrapping jump is
+/// a contradiction.
+///
+/// An empty listing answers 0 rather than dividing by zero.
+pub fn step(current: usize, len: usize, forward: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    if forward {
+        (current + 1) % len
+    } else {
+        (current + len - 1) % len
+    }
+}
+
+/// Where the scroll thumb sits in a track of `viewport` rows: `(start, height)`.
+///
+/// [`None`] when everything fits — an indicator always present indicates
+/// nothing.
+///
+/// The arithmetic is `PanEx`'s `render_scroll_thumb`, including its **round to
+/// nearest**, which is what lands the thumb flush at the bottom instead of a row
+/// short. Truncating instead agrees at both ends — the product is exact there —
+/// and differs mid-scroll, which is why `tests/gate_phase12.rs` asserts a
+/// mid-scroll offset rather than the two ends.
+///
+/// One adaptation: `PanEx` takes the track and the viewport separately, because
+/// one of its panes has a capacity that differs from its row count. Collapsing
+/// them is expressible here only because tikray's track *is* its viewport — the
+/// list block's inner height.
+pub fn scroll_thumb(len: usize, viewport: usize, offset: usize) -> Option<(usize, usize)> {
+    if viewport == 0 || len <= viewport {
+        return None;
+    }
+    let thumb = (viewport * viewport / len).clamp(1, viewport);
+    let travel = viewport - thumb;
+    let max_offset = len - viewport;
+    let start = (offset.min(max_offset) * travel + max_offset / 2) / max_offset;
+    Some((start, thumb))
+}
 
 /// The zoom levels, in multiples of the fit size.
 ///
@@ -627,6 +712,24 @@ impl Browser {
         Ok(browser)
     }
 
+    /// Move the highlight one row, wrapping at both ends.
+    ///
+    /// Returns early where `step` lands on the row it started from — a listing of
+    /// one — because re-running `reload_preview` for an unchanged selection would
+    /// clear the result and reset the zoom, contradicting the invariant that
+    /// those happen *only* when the highlighted entry changes.
+    fn move_by(&mut self, forward: bool) {
+        let current = self.list.selected().unwrap_or(0);
+        let next = step(current, self.entries.len(), forward);
+        if next == current {
+            return;
+        }
+        self.list.select(Some(next));
+        self.result = None;
+        self.zoom = 0;
+        self.reload_preview();
+    }
+
     /// Turn the filter off or back on, keeping the highlight on the same file.
     ///
     /// **By name, never by index.** Toggling changes how many rows precede the
@@ -738,18 +841,8 @@ impl Browser {
         }
 
         match code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.list.select_previous();
-                self.result = None;
-                self.zoom = 0;
-                self.reload_preview();
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.list.select_next();
-                self.result = None;
-                self.zoom = 0;
-                self.reload_preview();
-            }
+            KeyCode::Up | KeyCode::Char('k') => self.move_by(false),
+            KeyCode::Down | KeyCode::Char('j') => self.move_by(true),
             KeyCode::Home | KeyCode::Char('g') => {
                 self.list.select_first();
                 self.result = None;
@@ -888,11 +981,18 @@ impl Browser {
     /// lives in its own row above, which is what keeps the rectangle free to be
     /// blanked directly.
     fn render(&mut self, frame: &mut ratatui::Frame, status: &str) -> Rect {
-        let [main, footer] =
-            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
-        let [left, right] =
-            Layout::horizontal([Constraint::Percentage(35), Constraint::Percentage(65)])
-                .areas(main);
+        let Panes {
+            list: left,
+            status: status_area,
+            image: image_area,
+            footer,
+        } = panes(frame.area());
+        let right = Rect {
+            x: image_area.x.saturating_sub(1),
+            y: status_area.y.saturating_sub(1),
+            width: image_area.width + 2,
+            height: image_area.height + status_area.height + 2,
+        };
 
         let items: Vec<ListItem> = self
             .entries
@@ -905,12 +1005,28 @@ impl Browser {
             .highlight_symbol("▸");
         frame.render_stateful_widget(list, left, &mut self.list);
 
-        let block = Block::bordered().title(" preview ");
-        let inner = block.inner(right);
-        frame.render_widget(block, right);
+        frame.render_widget(Block::bordered().title(" preview "), right);
 
-        let [status_area, image_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+        // After `render_stateful_widget`, which is what writes `state.offset` —
+        // computed before, the thumb lags a frame.
+        if let Some((start, height)) = scroll_thumb(
+            self.entries.len(),
+            left.height.saturating_sub(2) as usize,
+            self.list.offset(),
+        ) {
+            let x = left.x + left.width - 1;
+            let buf = frame.buffer_mut();
+            for i in 0..height {
+                let y = left.y + 1 + (start + i) as u16;
+                if y >= left.y + left.height - 1 {
+                    break;
+                }
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_symbol(SCROLL_THUMB);
+                }
+            }
+        }
+
         frame.render_widget(Paragraph::new(status), status_area);
         let footer_text = keys(self.all, self.hidden, LEVELS[self.zoom]);
         frame.render_widget(Paragraph::new(footer_text), footer);

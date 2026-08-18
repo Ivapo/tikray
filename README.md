@@ -122,8 +122,9 @@ anyway.
 ### Browsing
 
 `tikray` with no arguments — or with a directory, or with `--browse` — opens a
-file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`) move, `⏎` (or `→`)
-enters a directory, `←` goes back up, and `q` quits. (The convert keys below are
+file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`) move and **wrap
+around** at both ends, `⏎` (or `→`) enters a directory, `←` goes back up, and `q`
+quits. A list longer than the pane shows a scroll thumb on its border. (The convert keys below are
 capitals because `j` is already *down*.) The highlighted image is
 drawn **centred** in the pane, scaled to it by the same rule below.
 

@@ -59,6 +59,11 @@ phases:
     shipped: null
     cut: null
     by: null
+  - name: "Phase 11 — cut the human gate down to what a machine cannot see"
+    reviewed: null
+    shipped: null
+    cut: null
+    by: null
 
 extends: null
 supersedes: null
@@ -2593,6 +2598,94 @@ others, on a distinction with no rule behind it.
   right for a false reason; the test is whether the file describes *what tikray
   does* at a level this phase changes, and a banner naming no invocation and no
   binding does not.)
+
+### Phase 11 — cut the human gate down to what a machine cannot see
+*Produces the observable: no. §3 requires that argued rather than assumed, and
+the argument is that this phase protects the observable's **verification** rather
+than the observable: a human gate at 29 questions and 12 TUI launches is one
+nobody runs, and an unrun gate checks nothing. Every cut is a check that a
+machine assertion already makes.*
+
+**Appended 2026-08-18, prompted by asking whether the script had grown too big.**
+Measured: `scripts/gate-phase4.sh` is **385 lines, 10 sections, 29 questions and
+12 TUI launches** — fifteen to twenty minutes of a person's attention, accreted
+one phase at a time with nothing ever removed.
+
+- **Scope:** `scripts/gate-phase4.sh` and nothing else. Three sections go.
+
+  | § | What it asks | Why it goes |
+  |---|---|---|
+  | 3 | `tikray <dir>` browses there | `tests/gate_phase6.rs:gate5_a_bare_directory_reaches_the_browser` asserts it headlessly through the binary |
+  | 4 | `--browse <file>` highlights it | **subsumed by §8**, which asks the same of a *hidden* file — a strictly stronger case that also exercises `src/tui.rs:entries_with` |
+  | 5 | `tikray view <path>` unchanged | its emission is machine-checked twice (`tests/gate.rs:gate4_force_emits_anyway` and `scripts/gate-phase9.sh`), and the *visual* is the same inline draw §2 already performs |
+
+  **The rule the survivors satisfy, stated so the next phase has a test to apply:
+  a human item may only ask what a machine cannot see.** A spill, an indent, a
+  picture, a message rendered in the right *place*, a terminal restored. Anything
+  about *which surface ran* is machine-checkable and already checked.
+
+  Three decisions:
+
+  1. **The two kinds of cut are not the same, and conflating them would hide the
+     weaker one.** §3 and §5 are replaced by **machine** assertions — the check
+     still happens, by a better means. §4 is replaced by **another human
+     section** testing a stronger case, so the total human coverage genuinely
+     shrinks: nobody will check `--browse` on a *visible* file again. That is
+     accepted because §8's hidden-file case exercises strictly more code (the
+     same dispatch, plus `entries_with`'s exemption), and a case that passes the
+     harder test and fails the easier one is not reachable here.
+  2. **Shipped spec text is not touched.** Phase 4's item 6 names
+     `tikray view <path>`, and Phase 6's item 5 names `<dir>` and `--browse`;
+     those stay exactly as written, because the record of what a phase decided
+     to check is not edited when a later phase finds a better way to check it.
+     **The script is a procedure and tracks the code** — Phase 6's
+     evidence-versus-procedure distinction, applied a third time and for the
+     first time to *remove* rather than amend, which is a step further and is
+     why it is said out loud rather than assumed to carry over.
+  3. **The finding that motivates the whole phase is recorded, not just acted
+     on:** *Phase 6's machine item 5 subsumes half of Phase 6's own human item
+     6.* It added headless dispatch assertions in the very phase whose human item
+     asks a person to check the same dispatch by eye — the human half was written
+     first and nobody revisited it when the machine half landed. **That is a
+     general hazard of this methodology**, not a mistake in Phase 6: a phase
+     writes its human item before it knows what its machine items will cover, and
+     nothing in the loop asks it to look again afterwards.
+
+  **This phase should be built before Phase 10 is gated, and that is deliberate.**
+  Phase 10 is implemented with `reviewed` set and `shipped` still null — its
+  human item is the run this script exists for. Trimming first means **one
+  shorter run discharges both**: §8 is Phase 10's and is untouched here, and the
+  three cut sections are none of Phase 10's business. The alternative — making a
+  person walk the 29-question version once, then immediately deleting a third of
+  it — spends their attention on checks this phase has already established are
+  redundant. Both phases then ship on the same run, which the review record notes
+  as it did for Phase 6 shipping before Phase 5.
+
+- **Exit gate:** two items runnable by `cargo test` with no terminal, and one a
+  human checks.
+
+  1. **Every assertion named as a replacement exists.** `tests/gate_phase11.rs`
+     asserts that `tests/gate_phase6.rs` contains
+     `gate5_a_bare_directory_reaches_the_browser` and
+     `gate5_browse_sends_a_file_to_the_browser_too`, and that `tests/gate.rs`
+     contains `gate4_force_emits_anyway` — **by name, by reading the files.**
+     Unusual, and it earns its place: this phase's entire justification is "a
+     machine already checks that", and if one of those is later renamed or
+     deleted the justification evaporates **silently**, leaving a human gate that
+     stopped covering something and a machine gate that never started. Cheap
+     insurance against a claim rotting.
+  2. **Phases 1–10's gates still pass, unmodified**, all 104 assertions across
+     nine files, plus `scripts/gate-phase9.sh`.
+  3. **Human, once:** the trimmed script runs start to finish, its sections are
+     numbered contiguously, and it still asks about the border, the indent, the
+     centring, the pane-rendered flattening notice, the `--browse` highlight on a
+     hidden file, and both interruptions. Seven sections, and nothing a machine
+     could have asked instead.
+
+- **Close-out:** `README.md`'s line describing what `scripts/gate-phase4.sh`
+  covers. **No `rules/` file changes** — none declares a script in `sources`, and
+  none documents the gate. **`CLAUDE.md` needs no change**: it says a phase
+  carries a gate someone else could check, which is what this phase is *for*.
 
 <!--
 The review record is a sibling file, not a section: it lives at

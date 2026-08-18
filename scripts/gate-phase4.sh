@@ -307,16 +307,42 @@ echo
 dim "   Now the one thing no test can check: --browse on a HIDDEN file must"
 dim "   highlight it. entries_with can be shipped and never called, and every"
 dim "   machine assertion still passes -- this is the only place that shows."
-HID="${TMPDIR:-/tmp}/tikray-gate10"; rm -rf "$HID"; mkdir -p "$HID"
+HID="${TMPDIR:-/tmp}/tikray-gate10"; rm -rf "$HID"; mkdir -p "$HID/sub" "$HID/.hidden-dir"
 cp "$REPO/samples/landscape.png" "$HID/.hidden-pic.png" 2>/dev/null
+cp "$REPO/samples/icon.svg" "$HID/.hidden-dir/pic.svg" 2>/dev/null
+touch "$HID/sub/.only-hidden-here"
+# `sub/` must be VISIBLE: it is what stops row 0 answering the highlight
+# question by luck, since directories sort first. `.hidden-dir/` must be
+# HIDDEN: naming it on the command line is the only way to test that an
+# explicit path opens regardless, and ascending out of it is the only way the
+# highlight can land somewhere other than where you came from.
 dim "   Running: tikray --browse $HID/.hidden-pic.png    (q to quit)"
+dim "   The directory has a visible sub/ above the hidden file, so landing on"
+dim "   the first row is a wrong answer rather than an accidental right one."
 pause "ready"
 snapshot
 "$TIKRAY" --browse "$HID/.hidden-pic.png"
 echo
 check_stty
-ask "Was .hidden-pic.png HIGHLIGHTED, not just the directory opened?"
-ask "And a directory whose contents are all hidden — did it say how many?"
+ask "Was .hidden-pic.png HIGHLIGHTED — not sub/, which is the first row?"
+
+echo
+dim "   Now a hidden directory named directly, which is the other half of"
+dim "   'an explicitly named path always opens'. Inside, everything is hidden."
+dim "   Please: look at what it says, then press ← to go up, then q."
+pause "ready"
+snapshot
+"$TIKRAY" "$HID/.hidden-dir"
+echo
+check_stty
+ask "Did the hidden directory open at all, despite being hidden?"
+ask "Did it report how many entries were hidden, rather than 'empty directory'?"
+ask "After ←, did it land on sub/ — a DIFFERENT entry from the one you left?"
+
+echo
+dim "   Two more of Phase 10's clauses, in the browser you just used:"
+ask "Does 'a' now do nothing at all — the old key is retired?"
+ask "Does the footer read '. filtered' and '. all (n hidden)'?"
 
 # ---------------------------------------------------------------------------
 # Item 7a — Ctrl-C, which raw mode makes a keypress

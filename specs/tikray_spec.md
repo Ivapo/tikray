@@ -2628,18 +2628,23 @@ named one invisible to all 104 assertions and all surviving sections.
 
   | § | What it asks | Why it goes |
   |---|---|---|
-  | 3 | `tikray <dir>` browses **there** | the property moves rather than dies: §1 runs `cd "$REPO"` and passes `samples` as an argument, so the same launch tests it at zero extra cost. **Both halves are required** — the `cd` because otherwise the script inherits the invoker's directory and a person running it from inside `samples/` gets a check that passes vacuously, and a new question naming the property, because otherwise only the invocation moved and nothing asks about it |
+  | 3 | `tikray <dir>` browses **there** | the property moves rather than dies: §1 runs `cd "$REPO"` and passes **`"$REPO/samples"`**, an absolute path, as an argument, so the same launch tests it at zero extra cost. **Both halves are required** — the `cd` because otherwise the script inherits the invoker's directory and a person running it from inside `samples/` gets a check that passes vacuously, and a new question naming the property, because otherwise only the invocation moved and nothing asks about it. **Absolute, not relative**: with a bare `samples`, `Browser`'s `dir` is relative, `Path::parent()` is `Some("")`, and `←` reports an unreadable directory — so the cheap version breaks the very navigation §1 goes on to test |
   | 4 | `--browse <file>` highlights it | subsumed by §8 **once §8 is fixed** — see decision 2 |
   | 5 | `tikray view <path>` unchanged | `src/main.rs:run`'s bare-file branch calls `src/main.rs:view(false, &path)`, **literally the same function** the subcommand calls, so §2 already exercises it including `detect_iterm2` |
 
-  **Three checks arrive**, because the audit found the script under-covering
-  shipped items as well as over-covering:
+  **Two checks arrive**, because the audit found the script under-covering as
+  well as over-covering. *(A third was carried here and has been handed back:
+  Phase 10's item 5 names a hidden directory opening, the ascend behaviour, `a`
+  doing nothing and the footer wording, and the script asked none of them — that
+  is **Phase 10's** close-out, not this phase's work. Round 3's blocker was
+  entirely an artifact of the mis-assignment: it was about whether a fixture
+  subdirectory should be visible or hidden, a question that only arises if this
+  phase owns those checks. It does not, and the blocker dissolves.)*
 
   | Added to | What was missing |
   |---|---|
   | §1 | the directory argument, per the table above |
-  | §8 | Phase 10's item 5 also names a hidden directory opening and `←` landing on the parent's first row; neither was in the script. **Pointed at §8's own fixture rather than at `~/.config`**, which assumes a directory the operator may not have — the visible subdirectory added for decision 2 holds only hidden entries, so descending into it, reading its count, and ascending back tests all three in one walk |
-  | §7 | Phase 8's item 6 names "converting does **not** reset the zoom", which nothing asks. **It goes in §7, not §6**, and the reason is a real defect in the first attempt to place it: `src/tui.rs:Browser::convert` calls `refresh` **only on success**, and the only successful convert available in `$REPO/samples` writes a new file *into the repo* — `icon.svg` + `P` creates `samples/icon.png`, while every other target refuses with `OutputExists` or `OutputIsSource` and never refreshes at all. So the check would have been silent **and** would have broken the script's own header invariant, "nothing here writes into the repo". §7 already works in a scratch copy and already presses `J` on `translucent.svg`: zoom first, convert, then ask |
+  | §7 | Phase 8's item 6 names "converting does **not** reset the zoom", which nothing asks. **It goes in §7, not §6**, and the reason is a real defect in the first attempt to place it: `src/tui.rs:Browser::convert` calls `refresh` **only on success**, and the only successful convert available in `$REPO/samples` writes a new file *into the repo* — `icon.svg` + `P` creates `samples/icon.png`, while every other target refuses with `OutputExists` or `OutputIsSource` and never refreshes at all. So the check would have been silent **and** would have broken the script's own header invariant, "nothing here writes into the repo". §7 already works in a scratch copy and already presses `J` on `translucent.svg`: **zoom first, then convert, then ask** — the order is load-bearing and goes in the instruction list, since converting before zooming makes the check vacuous |
 
   Three decisions:
 

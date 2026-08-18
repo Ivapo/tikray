@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
 #
-# tkr-001 Phase 4 — exit gate items 6 and 7, the human half.
+# tkr-001 Phase 4 — exit gate items 6 and 7, the human half,
+#   AMENDED by Phase 6 — which also carries its item 7 here.
+#
+# Phase 6 reversed what `tikray <path>` does and centred the preview, so two of
+# the questions below had their right answers changed and one invocation is new.
+# The amendment is deliberate and is argued in Phase 6's scope: an assertion file
+# is *evidence* and a gate script is a *procedure*. Phase 4's evidence —
+# tests/gate_phase4.rs and its exit-gate entry in specs/reviews/tkr-001.md — is
+# untouched and still true. A procedure tracks the code, as a rules/ file does,
+# and one left stale would fail for the wrong reason.
 #
 #   6. "`tikray` opens the browser; arrow-key navigation redraws the highlighted
-#       image; `tikray <path>` opens at that path's directory with it
-#       highlighted; `tikray view <path>` still draws inline and exits. Quitting
-#       restores the terminal — no residual alternate screen, no swallowed
-#       cursor, no leaked escape state. And the named visual property: the image
-#       sits inside its pane and does not cross the border, including while the
-#       window is resized."
+#       image; [`tikray <path>` opens at that path's directory with it
+#       highlighted; — SUPERSEDED by Phase 6: a bare path now draws a file
+#       inline, and `--browse` is what opens the browser at it] `tikray view
+#       <path>` still draws inline and exits. Quitting restores the terminal — no
+#       residual alternate screen, no swallowed cursor, no leaked escape state.
+#       And the named visual property: the image sits inside its pane and does
+#       not cross the border, including while the window is resized."
+#
+#   Phase 6 item 7 adds to that: the image **sits in the middle of its pane**,
+#       and `tikray --browse <file>` opens the browser at that file's directory
+#       with the file highlighted — the assertion that the affordance Phase 4
+#       shipped was restored rather than approximated.
 #
 #   7. "The terminal survives both interruptions, which are two different
 #       mechanisms." Raw mode goes through `cfmakeraw`, which clears ISIG, so
@@ -73,7 +88,7 @@ check_stty() {
 # Preflight
 # ---------------------------------------------------------------------------
 
-bold "tkr-001 Phase 4 — gate items 6 and 7"
+bold "tkr-001 Phases 4 and 6 — the human gate items"
 echo
 
 if [ "${TERM_PROGRAM:-}" != "iTerm.app" ] && [ "${LC_TERMINAL:-}" != "iTerm2" ]; then
@@ -106,8 +121,9 @@ dim "     · land on README.md — no image, and a line saying why"
 dim "     · RESIZE THE WINDOW, a few times, with an image showing"
 dim "     · press q to quit"
 echo
-bold "   Watch the border. The whole question is whether the image ever crosses"
-bold "   it — into the file list, or past the bottom edge, at any window size."
+bold "   Two things to watch, and they pull against each other."
+bold "   The image should sit in the MIDDLE of its pane — Phase 6 centred it —"
+bold "   and it must still never cross the border, at any window size."
 pause "ready"
 
 snapshot
@@ -115,34 +131,59 @@ snapshot
 echo
 check_stty
 ask "Did each highlighted image draw inside the preview pane?"
+ask "Was it CENTRED in the pane, horizontally and vertically?"
 ask "Did the image stay INSIDE its border at every size you tried?"
 ask "Did a non-image (README.md) show a line saying why, instead of an image?"
 ask "After quitting: normal prompt, cursor visible, no leftover screen?"
 
 # ---------------------------------------------------------------------------
-# Item 6b — a path argument opens the browser there, not a single-image view
+# Phase 6 — a bare path dispatches on what the path IS
 # ---------------------------------------------------------------------------
+#
+# This section is what Phase 6 changed. Phase 4 asked whether `tikray <path>`
+# opened the browser at that path's directory; the right answer is now no.
 
 echo
-bold "2. tikray <path> — the browser at that path's directory"
+bold "2. tikray <file> — draws inline, and gives the prompt back"
 dim "   Running: tikray samples/landscape.svg"
-dim "   It should open the BROWSER on samples/, with landscape.svg already"
-dim "   highlighted and previewed — not a single-image view. Press q to quit."
+dim "   No browser, no alternate screen — the picture, then your prompt."
+echo
+( cd "$REPO" && "$TIKRAY" samples/landscape.svg )
+echo
+ask "Did it draw inline and return to the prompt, taking no screen?"
+
+echo
+bold "3. tikray <dir> — browses there"
+dim "   Running: tikray samples/    (q to quit)"
 pause "ready"
 
 snapshot
-( cd "$REPO" && "$TIKRAY" samples/landscape.svg )
+( cd "$REPO" && "$TIKRAY" samples )
 echo
 check_stty
-ask "Did it open the browser on samples/ with landscape.svg highlighted?"
+ask "Did it open the browser on samples/?"
+
+echo
+bold "4. tikray --browse <file> — the browser, that file highlighted"
+dim "   Running: tikray --browse samples/landscape.svg    (q to quit)"
+dim "   This is the spelling of what a bare path meant before Phase 6, and the"
+dim "   question is whether it lands on the same file rather than merely the"
+dim "   same directory."
+pause "ready"
+
+snapshot
+( cd "$REPO" && "$TIKRAY" --browse samples/landscape.svg )
+echo
+check_stty
+ask "Did it open the browser on samples/ with landscape.svg HIGHLIGHTED?"
 
 # ---------------------------------------------------------------------------
 # Item 6c — view still does what it did
 # ---------------------------------------------------------------------------
 
 echo
-bold "3. tikray view <path> — still inline, still gives the prompt back"
-dim "   The second caller must not have moved the first one."
+bold "5. tikray view <path> — unchanged"
+dim "   Two callers reach the inline draw now; neither may have moved it."
 echo
 ( cd "$REPO" && "$TIKRAY" view samples/landscape.png )
 echo
@@ -153,7 +194,7 @@ ask "Did it draw inline and return to the prompt, taking no screen?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "4. Ctrl-C inside the TUI — a KeyEvent, not a signal"
+bold "6. Ctrl-C inside the TUI — a KeyEvent, not a signal"
 dim "   crossterm's raw mode goes through cfmakeraw, which clears ISIG, so the"
 dim "   terminal never turns Ctrl-C into SIGINT here. tikray handles it as quit."
 echo
@@ -171,7 +212,7 @@ ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "5. kill -INT — the other mechanism entirely"
+bold "7. kill -INT — the other mechanism entirely"
 dim "   A real signal default-terminates without unwinding, so no Drop runs and"
 dim "   nothing would restore the terminal. signal-hook is pinned for this one"
 dim "   case, and turns it into the loop's other exit."

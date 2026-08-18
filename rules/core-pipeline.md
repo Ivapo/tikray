@@ -27,12 +27,14 @@ file out.
 ## Two callers, one core
 
 `src/lib.rs` is a library with the CLI as one caller, not a binary with helpers,
-and as of Phase 4 the second caller exists: `src/main.rs:run` dispatches
-`src/cli.rs:Command` for the one-shot surfaces and `src/tui.rs:run` for the
-browsing one. Both reach `src/load.rs:load` and the same waist; the TUI differs
-only in the last step, sizing to a pane rather than the window — see
-`rules/tui.md`. Nothing below this line knows which caller it is serving, which
-is the claim the split was made for rather than one asserted after the fact.
+and the second caller exists. `src/main.rs:run` reaches the one-shot surfaces
+through `src/cli.rs:Command` **or through a bare path that turned out to be a
+file** — the surface depends on the path's type, so a `Command` no longer
+distinguishes them — and reaches the browser through `src/tui.rs:run`. Both go to
+`src/load.rs:load` and the same waist; the TUI differs only in the last step,
+sizing to a pane rather than the window, and `rules/tui.md` has the table of
+which invocation lands where. Nothing below the waist knows which caller it is
+serving — the claim the split was made for, rather than one asserted afterwards.
 
 ## The waist is `DynamicImage`
 

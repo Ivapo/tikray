@@ -63,7 +63,7 @@ no file. Its one visible consequence is deliberate: `convert missing.png
 existing.png` reports `OutputExists`, not `Io`. There is no tty check on this
 path — convert writes a file, not escape bytes.
 
-`run` dispatches three surfaces now, and this arm is the **CLI** one. That is
-what the stderr note belongs to: inside the TUI's alternate screen an
-`eprintln!` writes over the display, so converting from there is a separate
-problem and not yet solved.
+`run` dispatches four invocations across three surfaces now, and this arm is the
+one that writes a file. The stderr note belongs to it: inside the TUI's alternate
+screen an `eprintln!` writes over the display, so converting from there is a
+separate problem and not yet solved.

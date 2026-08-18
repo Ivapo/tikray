@@ -24,9 +24,10 @@ tikray convert samples/translucent.svg samples/translucent.png
 ## Try them
 
 ```sh
-tikray view samples/landscape.png     # a raster, scaled down to fit your window
-tikray view samples/landscape.svg     # the vector source, same picture
-tikray view samples/icon.svg          # tiny, and stays tiny
+tikray samples/landscape.png     # a raster, scaled down to fit your window
+tikray samples/landscape.svg     # the vector source, same picture
+tikray samples/icon.svg          # tiny, and stays tiny
+tikray samples/                  # all of them, in the browser
 ```
 
 **The two worth doing side by side**, because each is a rule you would otherwise
@@ -35,7 +36,7 @@ have to read about:
 ```sh
 # Never upscale. A 24x24 icon is drawn at 24x24, in a window some hundreds of
 # pixels wide. Consistency with raster, and the one place vector buys nothing.
-tikray view samples/icon.svg
+tikray samples/icon.svg
 
 # Alpha cannot survive JPEG, so it is composited onto white -- and tikray says
 # so on stderr rather than doing it silently. Convert the same source both ways

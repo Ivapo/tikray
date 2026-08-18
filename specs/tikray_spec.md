@@ -40,7 +40,7 @@ phases:
     cut: null
     by: null
   - name: "Phase 7 — the inline draw is indented, and the browser lists what it can show"
-    reviewed: null
+    reviewed: 2026-08-17
     shipped: null
     cut: null
     by: null
@@ -1579,6 +1579,15 @@ neither worth its own review round — and the gate keeps them separate.
      or a pipe. Two spaces prepended to that byte stream are corruption, not
      courtesy.
 
+     **The predicate is `std::io::stdout().is_terminal()`** — §2.7's idiom, the
+     same call `src/term.rs:detect_iterm2` already makes — and not a bound on
+     `display`'s `out` parameter. The two agree today, since `src/main.rs:view`
+     is the only caller and passes `stdout().lock()`, and they diverge the moment
+     a second caller passes a `Vec<u8>`; naming which one is meant costs a clause
+     and settles that in advance. Mechanically the test yields `cell: None` into
+     `indent`, so decision 2's "spaces and shrink together or not at all" carries
+     this case with no second code path.
+
      **It also resolves a collision this phase would otherwise have shipped
      into, and that is worth recording because it was invisible from the spec.**
      `tests/gate.rs:gate4_force_emits_anyway` runs the *binary* under
@@ -1611,7 +1620,7 @@ neither worth its own review round — and the gate keeps them separate.
   `previewable` therefore composes `detect` with `src/load.rs:ALLOWED`, which is
   the same pairing `src/load.rs:load` performs.
 
-  Three decisions:
+  Four decisions:
 
   1. **Detection is by content, at the cost of an open and a 1024-byte read per
      entry per directory change.** Extension-based filtering is free and is
@@ -1631,10 +1640,14 @@ neither worth its own review round — and the gate keeps them separate.
      tell you which file you are looking at. `src/tui.rs:index_of` already does
      this for `--browse` and going up a directory.
   4. **Four small placements, settled because the gate rides on the first.**
-     The hidden count goes in the **list pane's border title** beside the
-     directory — `~/pics — 12 hidden`, the one place already reserved for facts
-     about the listing rather than about an entry, and human item 7 asserts it is
-     visible. `a` joins `src/tui.rs:KEYS`. **The toggle persists across
+     The hidden count goes in the **footer, beside the key that clears it** —
+     `a all (12 hidden)` in `src/tui.rs:KEYS`. The list pane's border title is
+     the obvious home and is the wrong one: it is 35% of the window wide,
+     `src/tui.rs:compact` exists *only* because that title is already tight
+     enough to need `$HOME` rewritten to `~`, and ratatui truncates an over-long
+     title — so `~/some/deep/path — 12 hidden` loses the count on exactly the
+     narrow window where a person most needs it, while human item 8 asserts it is
+     visible. The footer spans the whole window and is uncontended. **The toggle persists across
      `descend` and `ascend`**, because a filter that silently resets on entering
      a directory is one the user has to re-apply at exactly the moment they are
      looking for something. And an entry that cannot be **read** is treated as
@@ -1651,7 +1664,7 @@ neither worth its own review round — and the gate keeps them separate.
      what a 1024-byte rule can deliver. The filter removes the formats tikray
      *refuses*; it cannot promise every file it keeps will parse.
 
-- **Exit gate:** six items runnable by `cargo test` with no terminal, and one a
+- **Exit gate:** seven items runnable by `cargo test` with no terminal, and one a
   human checks.
 
   1. **`indent` reproduces part 1's arithmetic.** With a 16×36 cell:
@@ -1693,18 +1706,37 @@ neither worth its own review round — and the gate keeps them separate.
      either alone can pass wrongly: content detection is proved by `rgb_png.txt`
      being *in* **and** by `not_an_image.png` being *out*.
 
-     **The counts, since a containment assertion is not a count.** That directory
-     holds **19 files and no subdirectories**; 16 are previewable and exactly
-     those 3 are hidden. `all = true` therefore yields 19, and the assertion is
-     `entries(dir, true).len() == entries(dir, false).len() + 3` — keyed to the
-     difference rather than to 19, so adding a fixture in a later phase does not
-     falsify a shipped gate.
+     **Keyed to the named files, never to a count.** That directory holds 19
+     files and no subdirectories today, of which 16 are previewable — but no
+     assertion may depend on those numbers, and not only because a later phase
+     adds fixtures. `+3` would be falsified by the *next refused-format* fixture
+     specifically, and refused-format fixtures are exactly what Phase 2 added
+     (`still.gif`, `icon24.svgz`). So the item asserts membership both ways for
+     the six files it names, and nothing about length.
   7. **Phases 1–4 and 6's gates still pass, unmodified.** All **66** assertions —
      16, 11, 12, 13 and 14 — green with no edits to any of the five files.
      **Phase 1's item 4 is the one to watch**, not its item 2: item 2 asserts on
      `sequence`, which this phase does not touch, while item 4 asserts on the
      binary's stdout, which decision 3 is what keeps true.
-  8. **Human, in iTerm2:** `tikray <file>` draws the image **indented from the
+  8. **Human, in iTerm2 — and item 8 is the *only* check that part 1 was wired
+     in at all.** Worth stating outright, because it is unusual and it is a real
+     hole: an implementation that ships `indent` and `indented` as pure functions
+     and never calls them from `src/display.rs:display` passes items 1–7 green.
+     Items 1–3 exercise the pure functions directly, item 4 asserts the
+     **absence** of spaces, and items 5–7 are part 2 and the regression. Every
+     other phase has put a property beyond the machine's reach only when it was
+     genuinely unobservable — a spill, a colour, a picture. Here the untested
+     link is the headline change, and the reason is narrow: the indent appears
+     only on a tty, and `cargo test` gives the binary a pipe.
+
+     *(A pty harness would close it — drive the binary through a pseudo-terminal
+     and assert the two leading spaces. It needs a dev-dependency for one
+     assertion, which is the trade Phase 2's gate item 4 declined when it
+     accepted an environment-dependent test over bundling a font. Recorded as
+     available and not taken, so a later phase can weigh it rather than
+     rediscover the gap.)*
+
+     So: `tikray <file>` draws the image **indented from the
      left edge**, and an image as wide as the window still fits on one screen
      without wrapping or scrolling — the indent came out of the width, not out of
      the margin. In the browser, only images and directories are listed, `a`

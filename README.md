@@ -86,13 +86,16 @@ so it is refused as an undetermined format.
 
 An image larger than the window is scaled down to fit, preserving its aspect
 ratio. An image that already fits is drawn at native size — **Tikray never
-upscales**, so a 16×16 icon appears as a 16×16 icon rather than a screenful of
-blurred squares. There is no flag for this; it is the rule.
+upscales on its own**, so a 16×16 icon appears as a 16×16 icon rather than a
+screenful of blurred squares. There is no flag for this; it is the rule
+everywhere except one place, and only when you ask: `+` in the browser. Nothing
+upscaled is ever written to a file.
 
 The rule applies to SVG exactly as to raster, which is worth saying out loud: an
-icon with `viewBox="0 0 24 24"` draws as a 24-pixel speck, not re-rendered sharp
-at window size. That is consistency with the never-upscale rule rather than an
-oversight, and it is the one place vector input buys you nothing today.
+icon with `viewBox="0 0 24 24"` draws as a 24-pixel speck. In the browser you can
+press `+` to make it bigger — but it is upscaled as pixels, not re-rendered, so
+it goes blocky rather than sharp. That is still the one place vector input buys
+you nothing today.
 
 If the terminal does not report its size in pixels, Tikray falls back to the
 image's inherent size, which may scroll.
@@ -121,6 +124,11 @@ file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`) move, `⏎` (o
 enters a directory, `←` goes back up, and `q` quits. (The convert keys below are
 capitals because `j` is already *down*.) The highlighted image is
 drawn **centred** in the pane, scaled to it by the same rule below.
+
+**`+` and `-` zoom** the preview through three levels — fit, 2×, 4× — and `0`
+returns to fit. Zooming crops to the centre of the image, because the terminal
+cannot clip one for us; there is no panning, so at 4× you are looking at the
+middle sixteenth. Moving to another file returns to fit.
 
 **`P` writes a PNG and `J` a JPEG** beside the highlighted file, same name, new
 extension — `photo.svg` becomes `photo.png`. The pane says what was written, and

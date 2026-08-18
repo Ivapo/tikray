@@ -31,6 +31,20 @@ use crate::term;
 /// One `scale` drives both axes, so the aspect ratio is preserved by
 /// construction. [`None`] in means the viewport was unreported; [`None`] out
 /// means [`sequence`] should emit `auto`, which never upscales either.
+/// §2.6's scale, exposed so it has one implementation.
+///
+/// [`fit`] is this multiplied out and rounded; zoom needs the raw factor to work
+/// out which source pixels a level shows, and a second copy of `min(W/w, H/h,
+/// 1.0)` in another module is how the two drift apart.
+///
+/// Total where [`fit`] is partial: callers screen the zero axes first, which is
+/// what `fit`'s own guard does before it ever reaches this.
+pub fn scale(native: (u32, u32), viewport: (u32, u32)) -> f64 {
+    (f64::from(viewport.0) / f64::from(native.0))
+        .min(f64::from(viewport.1) / f64::from(native.1))
+        .min(1.0)
+}
+
 pub fn fit(native: (u32, u32), viewport: Option<(u32, u32)>) -> Option<(u32, u32)> {
     let (w, h) = native;
     let (vw, vh) = viewport?;
@@ -38,9 +52,7 @@ pub fn fit(native: (u32, u32), viewport: Option<(u32, u32)>) -> Option<(u32, u32
         return None;
     }
 
-    let scale = (f64::from(vw) / f64::from(w))
-        .min(f64::from(vh) / f64::from(h))
-        .min(1.0);
+    let scale = scale(native, (vw, vh));
 
     // The max(1, ..) floor is not defensive: (10,3) into (1,100) computes
     // round(0.3) = 0, and a zero dimension is not a legal argument value.
@@ -78,6 +90,29 @@ pub fn sequence(img: &DynamicImage, viewport: Option<(u32, u32)>) -> Result<Vec<
     // rather than load-bearing, since fit's arithmetic is what preserves it.
     Ok(format!(
         "\x1b]1337;File=inline=1;{size};preserveAspectRatio=1:{}\x07",
+        BASE64.encode(&png)
+    )
+    .into_bytes())
+}
+
+/// [`sequence`] at an exact size, bypassing [`fit`]'s never-upscale clamp.
+///
+/// The clamp is a **default, not an invariant**: everything automatic keeps it,
+/// and this is the door a keypress opens (§2.6's 2026-08-18 note). Zoom needs it
+/// because a cropped region is *smaller* than the pane, so `fit` would refuse to
+/// scale it up and zoom would silently degrade into a crop.
+///
+/// Same argument string as [`sequence`], which is what lets a zoomed emission be
+/// compared against an unzoomed one.
+pub fn sequence_at(img: &DynamicImage, size: (u32, u32)) -> Result<Vec<u8>, TikrayError> {
+    let mut png = Vec::new();
+    img.write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+        .map_err(|source| TikrayError::Encode { source })?;
+
+    Ok(format!(
+        "\x1b]1337;File=inline=1;width={}px;height={}px;preserveAspectRatio=1:{}\x07",
+        size.0,
+        size.1,
         BASE64.encode(&png)
     )
     .into_bytes())

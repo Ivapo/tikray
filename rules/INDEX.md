@@ -6,9 +6,9 @@
   the output allowlist as a two-variant type, how the target format is resolved and why not through the image crate, the composite-onto-white arithmetic and the two channels that announce it, and the order run takes its two cheap refusals in
 - **[core-pipeline](core-pipeline.md)** — generated 2026-08-17 · 7 sources · 103/115 lines
   the DynamicImage waist, the content-sniffing load path, the raster and vector branches behind it, the per-phase input allowlist, the two output edges and the format matrix, the two callers over one core, and the error taxonomy the CLI renders to stderr
-- **[iterm2-display](iterm2-display.md)** — generated 2026-08-17 · 2 sources · 85/95 lines
-  the OSC 1337 argument string, the fit-down-never-up sizing arithmetic, the two-cell indent and where it comes out of, the viewport and cell-geometry queries, and iTerm2 detection with its --force override
+- **[iterm2-display](iterm2-display.md)** — generated 2026-08-17 · 2 sources · 94/110 lines
+  the OSC 1337 argument string, the fit-down-never-up sizing arithmetic and the one door out of it, the two-cell indent and where it comes out of, the viewport and cell-geometry queries, and iTerm2 detection with its --force override
 - **[svg-rasterization](svg-rasterization.md)** — generated 2026-08-16 · 1 source · 44/50 lines
   usvg's resolved size as the rasterization target, the premultiplied-alpha boundary out of tiny-skia, the system font database, and the two SVG-specific error variants
-- **[tui](tui.md)** — generated 2026-08-17 · 3 sources · 169/185 lines
-  the pane the image is drawn behind and why it survives a repaint, the cell arithmetic that sizes and centres it, what the list shows and what it hides, the four things that decide there is no preview, the draw-then-place ordering, which surface each invocation reaches, what the convert keys write and what the pane says about it, and the two interruptions that need different code
+- **[tui](tui.md)** — generated 2026-08-17 · 3 sources · 201/230 lines
+  the pane the image is drawn behind and why it survives a repaint, the cell arithmetic that sizes and centres it, what the list shows and what it hides, the four things that decide there is no preview, the draw-then-place ordering, which surface each invocation reaches, what the convert keys write and what the pane says about it, the three zoom levels and why they crop, and the two interruptions that need different code

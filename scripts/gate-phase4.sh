@@ -88,7 +88,7 @@ check_stty() {
 # Preflight
 # ---------------------------------------------------------------------------
 
-bold "tkr-001 Phases 4, 5, 6 and 7 — the human gate items"
+bold "tkr-001 Phases 4-8 — the human gate items"
 echo
 
 if [ "${TERM_PROGRAM:-}" != "iTerm.app" ] && [ "${LC_TERMINAL:-}" != "iTerm2" ]; then
@@ -214,6 +214,38 @@ echo
 ask "Did it draw inline and return to the prompt, taking no screen?"
 
 # ---------------------------------------------------------------------------
+# Phase 8 — zoom
+# ---------------------------------------------------------------------------
+#
+# Zoom is the first feature that deliberately pushes against the pane border, so
+# the border property Phases 4, 6 and 7 each asserted is what this section is
+# really testing.
+
+echo
+bold "6. + and - — zoom, in three centred steps"
+dim "   Opening samples/ again. Please do all of these:"
+dim "     · highlight icon.svg — a 24x24 speck — and press + twice"
+dim "     · then - and 0, which step back down and return to fit"
+dim "     · highlight landscape.svg and press + twice: it crops to the middle,"
+dim "       because there is no panning"
+dim "     · arrow to another file — the zoom must return to fit on its own"
+dim "     · press q"
+echo
+bold "   THE question: at every level, does the image stay inside its border?"
+bold "   A zoomed image that crosses into the file list or past the bottom edge"
+bold "   is the one failure this phase was most likely to introduce."
+pause "ready"
+
+snapshot
+( cd "$REPO/samples" && "$TIKRAY" )
+echo
+check_stty
+ask "Did + enlarge the image and - shrink it back, with 0 returning to fit?"
+ask "Did it stay INSIDE its border at every level, on every image you tried?"
+ask "Is the 24x24 icon actually usable at 4x, where it used to be a speck?"
+ask "Did moving to another file reset the zoom to fit?"
+
+# ---------------------------------------------------------------------------
 # Phase 5 — converting from inside the browser
 # ---------------------------------------------------------------------------
 #
@@ -222,7 +254,7 @@ ask "Did it draw inline and return to the prompt, taking no screen?"
 # line has to appear in the pane instead.
 
 echo
-bold "6. P and J — convert from inside the browser"
+bold "7. P and J — convert from inside the browser"
 dim "   Working in a scratch copy of samples/, so nothing in the repo changes."
 CONV="${TMPDIR:-/tmp}/tikray-gate-phase5"
 rm -rf "$CONV"; mkdir -p "$CONV"
@@ -259,7 +291,7 @@ ask "Do the written files open in Preview and look right?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "7. Ctrl-C inside the TUI — a KeyEvent, not a signal"
+bold "8. Ctrl-C inside the TUI — a KeyEvent, not a signal"
 dim "   crossterm's raw mode goes through cfmakeraw, which clears ISIG, so the"
 dim "   terminal never turns Ctrl-C into SIGINT here. tikray handles it as quit."
 echo
@@ -277,7 +309,7 @@ ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "8. kill -INT — the other mechanism entirely"
+bold "9. kill -INT — the other mechanism entirely"
 dim "   A real signal default-terminates without unwinding, so no Drop runs and"
 dim "   nothing would restore the terminal. signal-hook is pinned for this one"
 dim "   case, and turns it into the loop's other exit."

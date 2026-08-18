@@ -51,7 +51,7 @@ const POLL: Duration = Duration::from_millis(100);
 /// wide, [`compact`] exists only because it is already tight enough to need
 /// `$HOME` rewritten to `~`, and ratatui truncates — so the count would vanish on
 /// exactly the narrow window where it matters. The footer spans the window.
-fn keys(all: bool, hidden: usize) -> String {
+fn keys(all: bool, hidden: usize, zoom: u32) -> String {
     let filter = if all {
         "  a images only".to_string()
     } else if hidden > 0 {
@@ -59,7 +59,12 @@ fn keys(all: bool, hidden: usize) -> String {
     } else {
         String::new()
     };
-    format!(" ↑/↓ move   ⏎ open   ← up{filter}   P/J convert   q quit ")
+    let level = if zoom > 1 {
+        format!("  {zoom}x")
+    } else {
+        String::new()
+    };
+    format!(" ↑/↓ move   ⏎ open   ← up{filter}   +/- zoom{level}   P/J convert   q quit ")
 }
 
 /// Why there is no preview, for each standing condition.
@@ -110,6 +115,92 @@ pub fn pane_sequence(
         None => Ok(None),
         Some(viewport) => display::sequence(img, Some(viewport)).map(Some),
     }
+}
+
+/// A rectangle of source pixels to crop: `(x, y, width, height)`.
+pub type CropRect = (u32, u32, u32, u32);
+
+/// What a zoom level shows: the rect to crop, and the size to emit.
+pub type ZoomView = (CropRect, (u32, u32));
+
+/// Where in the pane an image starts, in cells, and the bytes that draw it.
+pub type Placement = ((u16, u16), Vec<u8>);
+
+/// The zoom levels, in multiples of the fit size.
+///
+/// Multiples of *fit* rather than absolute ratios, because fit already varies
+/// with the pane: "twice the size of what I am looking at" is predictable where
+/// "100%" is not. Three because the ask was a few, and because a fourth step of
+/// a centre-only zoom shows so little that it argues for panning instead.
+pub const LEVELS: [u32; 3] = [1, 2, 4];
+
+/// What a zoom level shows: the source rect to crop, and the size to emit.
+///
+/// [`None`] exactly where [`crate::display::fit`] is `None`, at every level.
+///
+/// **Level 1 returns the whole source and `fit`'s pair by construction**, not by
+/// arithmetic. The rule below is stated over a real-valued scale, and
+/// `floor(pane / s)` lands on the wrong side whenever the ratio is not exactly
+/// representable in binary64 — measured, 32 of 240 sampled sizes cropped a row
+/// they should not, including every 48-55 x 1003 source. Everything shipped runs
+/// through level 1, so it is made true structurally rather than hoped for.
+///
+/// Above that: the visible region is `floor(pane / (s*L))`, floored at 1 and
+/// clamped to the source, centred; the emitted size is `round(region * s*L)`,
+/// floored at 1 and clamped to the pane. Both floors restore `fit`'s own
+/// `max(1, ..)` — a 4000x1 source computes `round(1 * 0.16) = 0` otherwise,
+/// which is not a legal argument value. The clamp is defence in depth and does
+/// fire in one corner the floor creates: a pane axis under 4 pixels, which real
+/// cell geometry never produces.
+pub fn zoom_view(native: (u32, u32), pane: (u32, u32), level: u32) -> Option<ZoomView> {
+    let fitted = display::fit(native, Some(pane))?;
+    if level <= 1 {
+        return Some(((0, 0, native.0, native.1), fitted));
+    }
+
+    let target = display::scale(native, pane) * f64::from(level);
+    let region = |px: u32, src: u32| -> u32 {
+        let want = (f64::from(px) / target).floor() as u32;
+        want.max(1).min(src)
+    };
+    let (vw, vh) = (region(pane.0, native.0), region(pane.1, native.1));
+
+    let emit =
+        |v: u32, limit: u32| -> u32 { ((f64::from(v) * target).round() as u32).max(1).min(limit) };
+
+    Some((
+        ((native.0 - vw) / 2, (native.1 - vh) / 2, vw, vh),
+        (emit(vw, pane.0), emit(vh, pane.1)),
+    ))
+}
+
+/// The offset **and** the bytes for a pane at a zoom level, from one call.
+///
+/// One call because the alternative spills. [`pane_offset`] computes `fit`'s
+/// pair internally, so at 2x a 1200x800 preview emits 20 cell-rows while that
+/// function still answers `(0, 4)` — twenty rows placed four rows down ends four
+/// rows past a twenty-row pane, which is §2.14's spill produced by the one
+/// feature deliberately pushing against the border.
+///
+/// `Ok(None)` wherever [`pane_sequence`] returns it, meaning *draw the
+/// explanation and emit nothing*.
+pub fn pane_view(
+    img: &DynamicImage,
+    pane: (u16, u16),
+    cell: Option<(u32, u32)>,
+    level: u32,
+) -> Result<Option<Placement>, TikrayError> {
+    let Some(viewport) = pane_viewport(pane, cell) else {
+        return Ok(None);
+    };
+    let Some(cell) = cell else { return Ok(None) };
+    let Some(((x, y, w, h), emit)) = zoom_view((img.width(), img.height()), viewport, level) else {
+        return Ok(None);
+    };
+
+    let cropped = img.crop_imm(x, y, w, h);
+    let bytes = display::sequence_at(&cropped, emit)?;
+    Ok(Some((centre_offset(emit, pane, cell), bytes)))
 }
 
 /// Where inside its pane a `image`-sized picture starts, in **cells**.
@@ -353,10 +444,11 @@ impl Session {
             .map_err(|source| TikrayError::Tui { source })?;
 
         let pane = (image_area.width, image_area.height);
+        // One call for both, so the offset and the bytes cannot disagree about
+        // how big the image is — which is how a zoomed image lands past the
+        // bottom of its pane.
         let placement = match browser.preview.as_ref() {
-            Some(img) => {
-                pane_sequence(img, pane, cell)?.map(|bytes| (pane_offset(img, pane, cell), bytes))
-            }
+            Some(img) => pane_view(img, pane, cell, LEVELS[browser.zoom])?,
             None => None,
         };
         self.place(image_area, placement)
@@ -478,6 +570,10 @@ struct Browser {
     pending: Option<(PathBuf, Output)>,
     /// What the last convert did, shown until the highlighted entry changes.
     result: Option<String>,
+    /// The zoom level, an index into [`LEVELS`]. Resets when the highlighted
+    /// entry changes, and **only** then — `refresh` runs after a convert, where
+    /// the selection has not moved and the zoom has nothing to do with it.
+    zoom: usize,
 }
 
 impl Browser {
@@ -520,6 +616,7 @@ impl Browser {
             hidden,
             pending: None,
             result: None,
+            zoom: 0,
         };
         browser.reload_preview();
         Ok(browser)
@@ -617,21 +714,25 @@ impl Browser {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.list.select_previous();
                 self.result = None;
+                self.zoom = 0;
                 self.reload_preview();
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 self.list.select_next();
                 self.result = None;
+                self.zoom = 0;
                 self.reload_preview();
             }
             KeyCode::Home | KeyCode::Char('g') => {
                 self.list.select_first();
                 self.result = None;
+                self.zoom = 0;
                 self.reload_preview();
             }
             KeyCode::End | KeyCode::Char('G') => {
                 self.list.select_last();
                 self.result = None;
+                self.zoom = 0;
                 self.reload_preview();
             }
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.descend(),
@@ -641,6 +742,12 @@ impl Browser {
             // also suits a key that writes to disk.
             KeyCode::Char('P') => self.convert(Output::Png),
             KeyCode::Char('J') => self.convert(Output::Jpeg),
+            // Saturating at both ends: three levels, and `0` is the way back.
+            KeyCode::Char('+') | KeyCode::Char('=') => {
+                self.zoom = (self.zoom + 1).min(LEVELS.len() - 1);
+            }
+            KeyCode::Char('-') => self.zoom = self.zoom.saturating_sub(1),
+            KeyCode::Char('0') => self.zoom = 0,
             _ => {}
         }
     }
@@ -737,6 +844,7 @@ impl Browser {
                 let index = index_of(&listing, focus.as_deref());
                 self.hidden = hidden_count(dir, &listing, self.all);
                 self.result = None;
+                self.zoom = 0;
                 self.dir = dir.to_path_buf();
                 self.entries = listing;
                 self.list.select(Some(index));
@@ -777,7 +885,8 @@ impl Browser {
         let [status_area, image_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
         frame.render_widget(Paragraph::new(status), status_area);
-        frame.render_widget(Paragraph::new(keys(self.all, self.hidden)), footer);
+        let footer_text = keys(self.all, self.hidden, LEVELS[self.zoom]);
+        frame.render_widget(Paragraph::new(footer_text), footer);
 
         image_area
     }

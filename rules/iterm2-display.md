@@ -4,10 +4,11 @@ sources:
   - src/display.rs
   - src/term.rs
 covers: >
-  the OSC 1337 argument string, the fit-down-never-up sizing arithmetic, the
-  two-cell indent and where it comes out of, the viewport and cell-geometry
-  queries, and iTerm2 detection with its --force override
-max_lines: 95
+  the OSC 1337 argument string, the fit-down-never-up sizing arithmetic and the
+  one door out of it, the two-cell indent and where it comes out of, the
+  viewport and cell-geometry queries, and iTerm2 detection with its --force
+  override
+max_lines: 110
 generated: 2026-08-17
 ---
 
@@ -48,6 +49,15 @@ fills a window as a screenful of blurred squares. The `max(1, …)` floor is not
 defensive: `(10,3)` into `(1,100)` computes `round(0.3) = 0`, and a zero
 dimension is not legal. `None` in means the viewport was unreported; `None` out
 means emit `width=auto;height=auto`, which never upscales either.
+
+**The `1.0` clamp is a default, not an invariant.** `src/display.rs:scale` is
+that arithmetic exposed as a raw factor, so it has one implementation, and
+`src/display.rs:sequence_at` emits an exact size **without** consulting `fit` —
+the door zoom opens (`rules/tui.md`). Everything automatic still clamps; nothing
+upscales unless a person pressed a key, and no upscaled pixel is ever written to
+a file, because `src/tui.rs:convert_to` re-loads from disk. `sequence_at` shares
+`sequence`'s argument string exactly, which is what lets a zoomed emission be
+compared against an unzoomed one.
 
 ## The indent comes out of the viewport
 

@@ -63,9 +63,9 @@ clear.
 
 ## Status
 
-**All seven phases of `tkr-001` are built.** `tikray <file>` draws PNG, JPEG and
+**All eight phases of `tkr-001` are built.** `tikray <file>` draws PNG, JPEG and
 SVG inline in iTerm2, `tikray convert` writes any of them back out as PNG or
 JPEG, and a bare `tikray` browses files with a live preview and converts from
-there. Both jobs the idea above names are done, and the seed's "any of the
-others" narrowed once: SVG is input-only.
+there, with `+`/`-` to zoom a preview. Both jobs the idea above names are done,
+and the seed's "any of the others" narrowed once: SVG is input-only.
 Per-phase state lives in `specs/INDEX.md`; current behaviour lives in `rules/`.

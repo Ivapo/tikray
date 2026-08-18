@@ -9,8 +9,9 @@ covers: >
   arithmetic that sizes and centres it, what the list shows and what it hides,
   the four things that decide there is no preview, the draw-then-place ordering,
   which surface each invocation reaches, what the convert keys write and what
-  the pane says about it, and the two interruptions that need different code
-max_lines: 185
+  the pane says about it, the three zoom levels and why they crop, and the two
+  interruptions that need different code
+max_lines: 230
 generated: 2026-08-17
 ---
 
@@ -85,6 +86,38 @@ changes**, since one that reset on entering a directory would need re-applying a
 the moment the user is searching. The highlight follows by name through
 `src/tui.rs:index_of`, never by index: toggling changes how many rows precede it.
 An unreadable entry is not previewable, so it is hidden rather than raised.
+
+## Zoom, in three centred steps
+
+`+` and `-` step through `src/tui.rs:LEVELS` — **1×, 2×, 4× of fit**, saturating
+at both ends — and `0` returns to fit. Multiples of fit rather than absolute
+ratios, because fit already varies with the pane.
+
+**The terminal will not clip, so tikray crops.** An oversized image spills across
+the layout rather than being cut off, so `src/tui.rs:zoom_view` computes the
+source rect a level shows and `crop_imm` takes it; the terminal then upscales
+that payload. Two consequences worth knowing: an SVG at 4× is a blocky raster
+rather than a sharp re-render (OQ-8's residue), and at 2× you see a quarter of
+the image, always the middle — there is no pan.
+
+**`src/tui.rs:pane_view` returns the offset *and* the bytes from one call**,
+because the alternative spills. `src/tui.rs:pane_offset` computes `fit`'s pair
+internally, so at 2× a 1200×800 preview emits twenty cell-rows while that
+function still answers `(0, 4)` — twenty rows placed four rows down ends four
+rows past a twenty-row pane. `pane_sequence` and `pane_offset` remain, still
+gated, as the level-1 primitives `pane_view` is asserted equal to.
+
+**Level 1 returns the whole source and `fit`'s pair by construction.** The
+`L > 1` rule is stated over a real-valued scale, and `floor(pane / s)` lands on
+the wrong side whenever the ratio is not exactly representable — measured, 32 of
+240 sampled sizes cropped a row they should not. Everything shipped runs through
+level 1, so it is structural rather than arithmetic. Both region and emitted size
+are floored at 1, restoring `fit`'s `max(1, …)`: a 4000×1 source emits
+`height=0px` otherwise.
+
+The level resets when the highlighted entry changes and **only** then —
+`Browser::refresh` runs after a `P`/`J` convert, where the selection has not
+moved.
 
 ## Converting from the browser
 

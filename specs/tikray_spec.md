@@ -191,6 +191,9 @@ spec depends on:
 
 - **`image = "0.25"`** (0.25.10 current) decodes and encodes PNG and JPEG, and
   brings GIF, BMP, TIFF, ICO, QOI and WebP along at no additional design cost.
+  *(Phase 9 stops paying for that: it links `png` and `jpeg` only, and the six
+  are still refused by name because sniffing does not need their codecs. The
+  design cost was indeed nil; the binary cost was 1.1 MiB.)*
   **The free ride is not uniform, and §2.8 is where it stops being a free ride:**
   WebP decode is complete but *encode is lossless-only*, so a format being
   present in `image` is not the same as it being an output Tikray can offer.
@@ -379,7 +382,18 @@ construction from the wrong one.
 **Support is an explicit allowlist, per phase — Phase 1's is PNG and JPEG.**
 With default features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP
 without being asked, so "unsupported format" is a thing Tikray must decide
-rather than a thing that happens to it. A decodable-but-not-allowed input is
+rather than a thing that happens to it.
+
+**CORRECTED 2026-08-18 — "with default features" stops describing the build once
+Phase 9 ships.** *(Phase 9 is specced and not yet built.)* That phase narrows
+`image` to `png` and `jpeg`, so the shipped binary decodes two formats rather
+than fifteen. **The decision this subsection records is untouched and is in fact
+better served** — support is still an explicit allowlist, `src/load.rs:ALLOWED`
+is still what enforces it, and a GIF is still refused *by name*, because
+`image`'s signature table carries no `cfg` and sniffing never needed the codec.
+The note exists because the sentence above describes the *dependency*, and a
+reader who stops here will believe the binary links fifteen decoders it does
+not. A decodable-but-not-allowed input is
 refused with a message naming the detected format, so the failure is legible
 rather than a silent success on a format no phase has gated. This is §2.4's
 "supported versus incidentally working" claim being made honestly, in the one
@@ -2223,7 +2237,19 @@ pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
   unchanged.
 
   `cargo tree -i image` shows **tikray is `image`'s only dependent**, so there is
-  no feature unification to undo the reduction.
+  no feature unification to undo the reduction. (`resvg` pulls `gif` and
+  `image-webp` on its own account, which is why those crates still compile — but
+  not through `image`, so they are outside this phase.)
+
+  **Two doc comments are in scope, not in the close-out, and the distinction is
+  one Phase 6 had to learn.** `src/load.rs:ALLOWED` carries "With default
+  features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP", and
+  `src/convert.rs:Output` carries "an RGBA8 buffer encodes cleanly to nine
+  formats". Both files are declared `sources:` of the rules this phase repairs,
+  so **`/sync-rules` would regenerate the stale claim straight back** — the exact
+  hazard Phase 6 recorded when it put `src/cli.rs`'s module doc in scope and
+  named it in the close-out as well. Fixing the rule without fixing the comment
+  fixes nothing that lasts.
 
   Two decisions:
 
@@ -2237,9 +2263,38 @@ pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
      assertions would pass while proving nothing about the shipped artifact. A
      gate that ran them and declared victory would be measuring the wrong build.
 
-- **Exit gate:** two items, and item 1 is deliberately not a `cargo test`.
+     **"Regardless" is true as scoped, not a fact about Cargo.** The dev
+     dependency's defaults are a choice, and narrowing it too makes `cargo test`
+     exercise the shipped configuration — verified, all 97 stay green. It is
+     **not taken**: the gate files construct and re-read images freely, and a
+     later phase widening the input allowlist would have to unpick it before it
+     could write a fixture. The cost is that `cargo test` proves less than it
+     appears to, which is precisely what item 1 exists to cover.
 
-  1. **The shipped binary behaves identically, asserted against the binary.** A
+- **Exit gate:** three items, and only the first can fail if the phase is not
+  done.
+
+  **That is the gate's whole design problem, and it is worth stating before the
+  items.** Items 2 and 3 assert that behaviour and source are unchanged — which
+  is exactly what this phase promises, so **they pass byte-identically whether or
+  not the dependency line is ever narrowed.** The null implementation goes green.
+  So does the classic slip of writing `features = ["png", "jpeg"]` and forgetting
+  `default-features = false`, which adds nothing and removes nothing. §3 says a
+  gate is what catches a wrong implementation; without item 1 this one catches
+  every wrong implementation except the one the phase is about.
+
+  1. **The artifact is actually configured the way this phase claims.**
+     `cargo tree -e features,no-dev -i image` reports `png` and `jpeg` and
+     **does not report** `gif`, `avif` or `rayon`.
+
+     **`no-dev` is load-bearing, and the obvious form is booby-trapped by the
+     very unification decision 2 identifies.** Measured on a reduced tree: plain
+     `cargo tree -e features -i image` still prints **eighteen** features
+     including `gif`, `avif` and `rayon`, because the dev-dependency pulls the
+     defaults back in; the same command with `no-dev` prints `png` and `jpeg`.
+     A gate that omitted the flag would look thorough and assert nothing.
+
+  2. **The shipped binary behaves identically, asserted against the binary.** A
      script builds `--release` and runs it, not the test harness: `still.gif` is
      refused with a message containing **"GIF"** (not "could not be determined");
      `not_an_image.png` and `icon24.svgz` are still undetermined; and
@@ -2247,24 +2302,47 @@ pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
      `deep16.png` all convert to PNG, with `deep16.png` coming back **16-bit**
      (Phase 3's item 3, at the one place a feature cut could quietly quantize it).
      Distinct destination names per case — a shared one hits the overwrite guard
-     and reports a failure that is the harness's, not the tool's.
-  2. **Phases 1–8's gates still pass, unmodified**, all 97 assertions across
-     eight files. They prove the source is unchanged; item 1 proves the artifact
-     is. Both are needed and neither substitutes for the other, which is the
-     point of decision 2.
+     and reports a failure that is the harness's, not the tool's, which is how
+     this phase's own measurement first went wrong.
+
+     **Two paths the PNG-only cases miss, and both are one line.**
+     `alpha.png → .jpg` exercises `src/convert.rs:flatten` into
+     `write_to(Jpeg)` — §2.13's most delicate output and the only JPEG *encode*
+     anywhere; the `jpeg` feature gates decode and encode together, so `rgb.jpg`
+     proves only half of it. And `tikray view --force <a PNG>` piped to `wc -c`
+     puts the observable's own path through the reduced artifact without needing
+     iTerm2.
+  3. **Phases 1–8's gates still pass, unmodified**, all 97 assertions across
+     eight files. They prove the source is unchanged; item 2 proves the artifact
+     behaves; item 1 proves it is the artifact this phase describes. Three
+     different claims, and no two of them substitute for each other — which is
+     the point of decision 2.
 
   No new fixtures and no new test file: item 1 is `scripts/gate-phase9.sh`,
   which is a *procedure* and belongs in `scripts/` for the reason Phase 6
   recorded.
 
-- **Close-out:** `Cargo.toml`'s comment, and `rules/core-pipeline.md`, whose
-  allowlist section says "With default features `image` also decodes GIF, BMP,
-  TIFF, ICO, QOI and WebP" — true today and false after this, though the sentence
-  it supports ("sniffing is feature-independent, so the detected name is right
-  even for formats the build cannot decode") becomes the *load-bearing* one
-  rather than a footnote. `README.md` says "Anything else `image` can decode —
-  GIF, BMP, TIFF, WebP — is refused by name", which stays true and now describes
-  a smaller build. **`CLAUDE.md` needs no change.**
+- **Close-out:** six artifacts. The first draft named three and marked one of the
+  others safe, which is recorded because the miss has a shape: **every sentence
+  in the corpus that describes what `image` *can* do, rather than what tikray
+  does, is falsified by this phase**, and they are scattered across rules, prose
+  and doc comments.
+
+  | Artifact | The sentence, and why it changes |
+  |---|---|
+  | `Cargo.toml` | the comment being reversed — the real change |
+  | `rules/core-pipeline.md` | "With default features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP". The sentence it supports — sniffing is feature-independent, so the detected name is right *even for formats the build cannot decode* — stops being a footnote and becomes **load-bearing** |
+  | `rules/convert.md` | **the one the first draft missed.** "The encode edge is *wider* than the decode edge: an RGBA8 buffer encodes cleanly to nine formats … so 'whatever `image` will write' is not two." Measured on a reduced build: `write_to` answers *"The image format `Gif` is not supported"* for all seven of the others. After this phase "whatever `image` will write" **is** two, and the recorded justification for `src/convert.rs:Output` being a two-variant enum reads backwards |
+  | `README.md` | "Anything else `image` can decode — GIF, BMP, TIFF, WebP — is refused by name." **Not "stays true"**: its premise is exactly what stops holding. The behaviour is unchanged — the refusal now runs through sniffing — and the next sentence ("support is an explicit list, not whatever the dependencies happen to link in") gets *stronger* |
+  | `samples/README.md` | "a format tikray *can* technically write but has not gated is refused by name", beside `tikray convert samples/landscape.png out.gif`. The command's output is unchanged, since `src/convert.rs:resolve` refuses before any encoder is consulted; the word "technically" is what goes |
+  | `tikray.md` | the status line, and Tech stack's "`image` crate — handles PNG/JPEG (and other formats like WebP/GIF/BMP for free)" |
+
+  **`CLAUDE.md` needs no change** — it names no dependency and no format.
+
+  `src/load.rs:previewable`'s doc and `rules/tui.md`'s copy of it both **stay
+  true**: they are about `detect` admitting six formats the allowlist then
+  refuses, which is sniffing and is feature-independent. Named so the sweep is
+  bounded rather than open-ended.
 
 <!--
 The review record is a sibling file, not a section: it lives at

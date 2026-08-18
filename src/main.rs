@@ -1,5 +1,6 @@
 //! `tikray` — the CLI caller of the library core.
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser as _;
@@ -21,21 +22,28 @@ fn run() -> Result<(), TikrayError> {
     let cli = Cli::parse();
 
     let Some(command) = cli.command else {
-        // No subcommand is the TUI, with or without a path. A bare path does
-        // not draw inline: adding an argument must not flip the output mode
-        // (§2.9), and `view` is the opt-in for "print it and give me my prompt
-        // back".
-        return tui::run(cli.path.as_deref());
+        // No subcommand dispatches on what the path *is* (§2.9's corrected
+        // note): a file draws inline, a directory browses, and --browse forces
+        // the browser. The stat is the dispatch, so its failure is the
+        // dispatch's — a missing path is Io here, before either surface starts.
+        let Some(path) = cli.path else {
+            return tui::run(None);
+        };
+        let meta = std::fs::metadata(&path).map_err(|e| TikrayError::io(&path, e))?;
+
+        return if cli.browse || meta.is_dir() {
+            tui::run(Some(&path))
+        } else {
+            // Not a second inline path beside `view`'s: the same one, with
+            // force off. That is what keeps §2.7's detection on this branch —
+            // without it `tikray x.png > out.txt` fills a file with escape
+            // bytes.
+            view(false, &path)
+        };
     };
 
     match command {
-        Command::View { force, path } => {
-            // Detection comes first, and before anything reaches stdout: a
-            // refused run must write zero bytes there (§2.7, gate item 4).
-            term::detect_iterm2(force)?;
-            let img = load(&path)?;
-            display::display(&img, &mut std::io::stdout().lock())
-        }
+        Command::View { force, path } => view(force, &path),
 
         // No tty check here: convert writes a file, not escape bytes, so
         // §2.7's detection has nothing to protect.
@@ -78,4 +86,16 @@ fn run() -> Result<(), TikrayError> {
             })
         }
     }
+}
+
+/// Draw `path` inline and return to the prompt.
+///
+/// One function with two callers — the `view` subcommand and a bare path that
+/// turned out to be a file — rather than two inline paths that have to be kept
+/// in step. Detection comes first, and before anything reaches stdout: a refused
+/// run must write zero bytes there (§2.7, Phase 1's gate item 4).
+fn view(force: bool, path: &Path) -> Result<(), TikrayError> {
+    term::detect_iterm2(force)?;
+    let img = load(path)?;
+    display::display(&img, &mut std::io::stdout().lock())
 }

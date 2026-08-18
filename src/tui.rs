@@ -96,6 +96,51 @@ pub fn pane_sequence(
     }
 }
 
+/// Where inside its pane a `image`-sized picture starts, in **cells**.
+///
+/// `image` is the pair [`crate::display::fit`] returned — the size the terminal
+/// is told — and **never the buffer's native size**. That distinction is the one
+/// trap in this arithmetic: almost every real image is larger than its pane, so
+/// a native pair makes the footprint exceed the pane, the offset saturate to
+/// `(0, 0)`, and every picture sit in the corner while every assertion below
+/// stays green. [`pane_offset`] exists so the wrong call cannot be made.
+///
+/// The footprint rounds **up**: a 24×24 image is 0.67 of a 36px row, and a floor
+/// would call that zero rows and centre it as though it occupied nothing. (It is
+/// not spill prevention — `fit` already guarantees `ceil(h/cell) ≤ pane`, so the
+/// floor never pushes an image out of its pane. The reason is smaller and exact.)
+///
+/// Saturating, because this is public and pure even though `fit` clamps first.
+pub fn centre_offset(image: (u32, u32), pane: (u16, u16), cell: (u32, u32)) -> (u16, u16) {
+    let footprint = |px: u32, per_cell: u32| -> u16 {
+        if per_cell == 0 {
+            return u16::MAX;
+        }
+        u16::try_from(px.div_ceil(per_cell)).unwrap_or(u16::MAX)
+    };
+
+    let free_x = pane.0.saturating_sub(footprint(image.0, cell.0));
+    let free_y = pane.1.saturating_sub(footprint(image.1, cell.1));
+    (free_x / 2, free_y / 2)
+}
+
+/// [`centre_offset`] with the fitting done for you, over the same arguments
+/// [`pane_sequence`] takes.
+///
+/// `(0, 0)` wherever `pane_sequence` returns `Ok(None)`: there is nothing to
+/// place in that state, which is why this returns a bare pair where its sibling
+/// returns an [`Option`].
+pub fn pane_offset(img: &DynamicImage, pane: (u16, u16), cell: Option<(u32, u32)>) -> (u16, u16) {
+    let Some(cell) = cell else { return (0, 0) };
+    let Some(viewport) = pane_viewport(pane, Some(cell)) else {
+        return (0, 0);
+    };
+    match display::fit((img.width(), img.height()), Some(viewport)) {
+        Some(fitted) => centre_offset(fitted, pane, cell),
+        None => (0, 0),
+    }
+}
+
 /// Browse from `start`, previewing whatever is highlighted.
 ///
 /// `None` starts in the working directory. A file starts in **its directory,
@@ -145,7 +190,8 @@ pub fn run(start: Option<&Path>) -> Result<(), TikrayError> {
 /// rewritten only when they or their rectangle change.
 struct Session {
     terminal: DefaultTerminal,
-    placed: Option<(Rect, Vec<u8>)>,
+    /// The pane, where in it the picture starts, and the bytes that drew it.
+    placed: Option<(Rect, (u16, u16), Vec<u8>)>,
 }
 
 /// Restoring the terminal is this type's only job, so an early `?` cannot skip it.
@@ -210,26 +256,38 @@ impl Session {
             .map_err(|source| TikrayError::Tui { source })?;
 
         let pane = (image_area.width, image_area.height);
-        let bytes = match browser.preview.as_ref() {
-            Some(img) => pane_sequence(img, pane, cell)?,
+        let placement = match browser.preview.as_ref() {
+            Some(img) => {
+                pane_sequence(img, pane, cell)?.map(|bytes| (pane_offset(img, pane, cell), bytes))
+            }
             None => None,
         };
-        self.place(image_area, bytes)
+        self.place(image_area, placement)
     }
 
     /// Write the image outside ratatui's writer, after its own flush has landed.
-    fn place(&mut self, area: Rect, bytes: Option<Vec<u8>>) -> Result<(), TikrayError> {
-        let want = bytes.map(|bytes| (area, bytes));
+    ///
+    /// `area` is the **whole** pane and `offset` is where inside it the picture
+    /// starts. Both are kept: the offset is where the bytes go, and the pane is
+    /// what has to be erased — wherever the previous image sat, which since
+    /// centring is no longer the corner.
+    fn place(
+        &mut self,
+        area: Rect,
+        placement: Option<((u16, u16), Vec<u8>)>,
+    ) -> Result<(), TikrayError> {
+        let want = placement.map(|(offset, bytes)| (area, offset, bytes));
         if want == self.placed {
             return Ok(());
         }
 
         let mut out = std::io::stdout().lock();
-        if let Some((old, _)) = self.placed.take() {
+        if let Some((old, _, _)) = self.placed.take() {
             blank(&mut out, old)?;
         }
-        if let Some((area, bytes)) = &want {
-            queue!(out, MoveTo(area.x, area.y)).map_err(|source| TikrayError::Tui { source })?;
+        if let Some((area, (dx, dy), bytes)) = &want {
+            queue!(out, MoveTo(area.x + dx, area.y + dy))
+                .map_err(|source| TikrayError::Tui { source })?;
             out.write_all(bytes)
                 .map_err(|source| TikrayError::Tui { source })?;
         }

@@ -72,8 +72,8 @@ phases:
   - name: "Phase 13 — the gate trim, with the tripwire its licence requires"
     reviewed: null
     shipped: null
-    cut: null
-    by: null
+    cut: 2026-08-18
+    by: tkr-001
 
 extends: null
 supersedes: null
@@ -89,45 +89,68 @@ reference: >
 
 # Tikray
 
-## 0. Closing note — Phase 11 was cut, and what it found was kept
+## 0. Closing note — the gate trim was proposed twice and cut twice
 
-**Phase 11 (cut 2026-08-18) proposed trimming `scripts/gate-phase4.sh`** from
-411 lines and 33 questions to roughly 340 and 27, by removing three human checks
-that machine assertions had come to cover. It reached **five review rounds** —
-two past the cap, both extensions authorised by a person — and was **correct and
-not worth building**, which is an unusual pair and the reason this note exists.
+**Phases 11 (cut 2026-08-18) and 13 (cut 2026-08-18) are the same idea**:
+trim `scripts/gate-phase4.sh` by removing human checks that machine assertions
+had come to cover. Phase 11 reached **five review rounds**, two past the cap by
+authorisation, and was judged *correct and not worth building*. Phase 13 revived
+it when the condition Phase 11 was cut on expired, and was cut after one round on
+an argument neither had made.
 
-**Why it was cut.** Its own exit gate required a person to walk the whole trimmed
-script start to finish: the same 15–20 minute session the phase existed to
-shorten. One full run spent to save three questions on later runs, with no
-further phase specced to trigger those runs. Break-even sat around five future
-gate runs and the queue was empty.
+**The arithmetic that settles it, measured rather than estimated.** The three
+removable sections — `tikray <dir>`, `--browse <file>`, `view <path>` — are
+**45 lines and 3 questions**. The script was 385 lines and 29 questions when a
+person first said it felt too long; it is 449 and 38 now; the trim would leave it
+at **404 and 35**. *The trim lands above where the complaint started.*
 
-**What it found, which is kept and is worth more than the trim.** Three
-structural facts about this methodology, none of them specific to tikray:
+**And the reason is structural, not accidental.** The sections a machine can
+replace are **short** — they ask simple things, which is exactly why a test could
+come to assert them. The sections a machine cannot replace are **long**, because
+they need fixtures, setup and explanation: 60 generated files for a scroll thumb,
+a scratch tree for a convert, two directories to make a highlight check
+discriminate. **So trimming a human gate by replacing checks with assertions
+removes its cheapest lines and keeps its most expensive ones**, and a gate
+audited this way converges on being all fixtures and no questions. That is worth
+knowing before anyone proposes it a third time.
+
+**One more fact, recorded because it is the strongest argument against the
+subject:** the trim produced a **blocking review finding in every phase that
+touched it — six for six.** Five in Phase 11, one in Phase 12 (which considered
+and declined it), two in Phase 13's single round. Three of those were tripwires
+written so they could not fail: one asserting a substring that already occurred
+four times as a `cd` target, one asserting a script line without the code fact
+that made the cut safe, one asserting the two ends of a range where both
+candidate implementations agree. Editing a human gate is consistently harder than
+the edit looks.
+
+**What the episodes found, which is kept and outlives them.** Four structural
+facts about this methodology, none specific to tikray:
 
 - **A phase's machine items can silently subsume its own human item.** Phase 6
   added headless dispatch assertions in the very phase whose human item asks a
-  person to check that dispatch by eye. Nothing in the loop asks a phase to
-  re-read its human item once it knows what its machine items cover.
-- **A human item can ship with no runnable form.** Phase 10's item 5 named a
-  hidden directory opening, the ascend behaviour, `a` doing nothing and the
-  footer wording; the script asked none of them, through three review rounds of
-  Phase 10 itself. Reviews read the phase, and check a human item for being
-  *specific* rather than for being *runnable*.
-- **The accretion outran the phase reversing it.** The script grew 26 lines and
-  4 questions *during Phase 11's own five review rounds*, all of it Phase 10
-  legitimately completing its close-out.
+  person to check that dispatch by eye.
+- **A human item can ship with no runnable form.** Phase 10's item 5 named four
+  checks the script never asked, through three of its own review rounds — and
+  **Phase 12 then did the identical thing** one phase after it was recorded as a
+  lesson. Reviews read the phase, and check a human item for being *specific*
+  rather than for being *runnable*. Nothing compares an item's clauses against
+  the script meant to run them.
+- **The accretion outruns the phase reversing it.** The script grew 26 lines
+  during Phase 11's five rounds and 38 more before Phase 13's, all of it phases
+  legitimately completing their close-outs.
+- **The rule worth keeping, which is cheaper to apply than to enforce:** *a human
+  item may only ask what a machine cannot see **about the rendering or the
+  private wiring**.* Applied when an item is written it costs nothing; applied
+  afterwards it costs what these two phases cost.
 
-The first two were acted on: Phase 10's §8 was completed and shipped before this
-phase was cut. The trim itself is available to **whichever phase next amends the
-script**, under the evidence-versus-procedure licence Phases 6, 7, 8 and 10 each
-used — carried on a gate run someone is already waiting on, which is the cost
-Phase 11 could not avoid. If no such phase comes, nothing was lost.
+The first two were acted on — Phase 10's and Phase 12's gate sections were
+completed and shipped. **The trim itself is not available to a later phase**:
+unlike Phase 11's note, this one closes the licence, because the arithmetic above
+is not going to improve.
 
-**The rollup reads `partial` from here on** (§1.1 rule 4), permanently, and that
-is the documented and accepted cost of a cut: eleven phases, ten shipped, one
-cut as unnecessary.
+**The rollup reads `partial` from here on** (§1.1 rule 4), permanently: thirteen
+phases, eleven shipped, two cut as unnecessary.
 
 ## 1. Goal
 

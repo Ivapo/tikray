@@ -1288,24 +1288,44 @@ independent, so the gate keeps them separate.
   | `tikray view [--force] <path>` | inline, one-shot | no |
   | `tikray convert …` | writes a file | no |
 
-  **`src/cli.rs` gains one `bool` field and nothing else**, which is the finding
-  that sizes this half. Phase 4's tree already parses a bare path into
+  **`src/cli.rs` gains one `bool` field**, plus a rewritten module doc — the one
+  it ships argues the reversed grammar verbatim, `vim` analogy included, and a
+  file that still makes the old case is worse than one that never made it, since
+  `/sync-rules` reads it. Phase 4's tree already parses a bare path into
   `Cli::path`; what changes is `src/main.rs:run`'s dispatch of that value, from
   "always the browser" to "stat it, then choose". So **Phase 4's gate item 3
   stays true unmodified** — all five of its parse cases, including `./view` —
-  because those assertions read `command` and `path`, and a new flag beside them
-  changes neither. That is the item to watch, not a formality: parsing is not
-  what this phase changes, and if item 3 goes red the two have been conflated.
+  because those assertions read `command` and `path` by field, and a new flag
+  beside them changes neither. That is the item to watch, not a formality:
+  parsing is not what this phase changes, and if item 3 goes red the two have
+  been conflated.
 
-  Three things an implementer cannot guess, settled here:
+  Four things an implementer cannot guess, settled here:
 
-  1. **The stat is the dispatch, so its failure is the dispatch's failure.** A
+  1. **The file branch *is* the `View` arm with `force: false`**, reached
+     without the subcommand — not a second inline path beside it. It therefore
+     calls `src/term.rs:detect_iterm2` before anything reaches stdout, exactly as
+     §2.7 requires, and stating that is not pedantry: an implementer who wires
+     the branch straight to `src/display.rs:display` makes `tikray x.png >
+     out.txt` fill a file with escape bytes, which is the failure §2.7's tty half
+     exists to stop and which no assertion in Phase 4's gate would catch.
+  2. **The stat is the dispatch, so its failure is the dispatch's failure.** A
      path that does not exist is `TikrayError::Io` from that call, before either
-     surface starts — the same error `tikray <path>` gives today, reached one
-     step earlier. A path that is neither file nor directory (a socket, a fifo)
-     takes the **file** branch and is refused by `load` as an undetermined
-     format, because that is the branch with a message about what the bytes are.
-  2. **`--browse` selects a surface; `--force` modifies one. That is why they
+     surface starts. **Under a pipe that is a change, not a relocation**, and the
+     difference is worth naming: today `src/tui.rs:run` checks the terminal
+     before `src/tui.rs:Browser::open` reads anything, so `tikray <missing>`
+     with stdout redirected reports `NoScreen`; after this phase it reports
+     `Io`, because the stat now comes first. A path that is neither file nor
+     directory (a socket, a fifo) takes the **file** branch and is refused by
+     `load` as an undetermined format, because that is the branch with a message
+     about what the bytes are.
+
+     `Browser::open` keeps its own `metadata` call, so the browse branch stats
+     twice. That is deliberate rather than overlooked: the two stats answer
+     different questions — which surface runs, and what the browser starts on —
+     and threading one answer into the other couples a dispatch arm to a
+     constructor for no gain.
+  3. **`--browse` selects a surface; `--force` modifies one. That is why they
      sit on different invocations**, and it is the answer to §2.9's "`view`
      becomes pure noise" — an objection this phase has to answer rather than
      dismiss, since it was the strong half of the argument being reversed.
@@ -1315,7 +1335,7 @@ independent, so the gate keeps them separate.
      thing the bare form has to be able to say now that its meaning depends on
      what the path turns out to be. So `view` still owns the options, and the
      bare form owns exactly one surface selector.
-  3. **`--browse` overrides the stat rather than consulting it.** With a
+  4. **`--browse` overrides the stat rather than consulting it.** With a
      directory it is a no-op, and with a missing path it still fails at the stat
      — the browser needs a directory to list either way. Given a file it opens
      that file's directory with the file highlighted, which is Phase 4's
@@ -1328,6 +1348,7 @@ independent, so the gate keeps them separate.
   | File | Entry points |
   |---|---|
   | `src/tui.rs` | `+ pub fn centre_offset(image: (u32,u32), pane: (u16,u16), cell: (u32,u32)) -> (u16,u16)` — the offset in **cells**, pure |
+  | `src/tui.rs` | `+ pub fn pane_offset(img: &DynamicImage, pane: (u16,u16), cell: Option<(u32,u32)>) -> (u16,u16)` — the glue, mirroring `pane_sequence` |
   | `src/cli.rs` | `+ browse: bool` on `Cli`, part 1's surface selector |
   | `src/main.rs` | part 1's type-dispatch, in `run` |
 
@@ -1337,24 +1358,45 @@ independent, so the gate keeps them separate.
   pure function over the same integers, and `src/tui.rs:Session` applies it at
   the `MoveTo`.
 
-  Two mechanical points, because both decide whether this spills:
+  **`centre_offset`'s `image` argument is the pair `src/display.rs:fit`
+  returned — the size the terminal is told — and never the buffer's native
+  size.** This is the phase's one real trap, and it is the shape §2.8, §2.11 and
+  §2.13 each record: silent, plausible, and invisible to a gate that checks the
+  pure function alone. At the call site the only image in hand is
+  `Session`'s decoded buffer, so `centre_offset((img.width(), img.height()), …)`
+  is what an implementer reaches for — and since almost every real image is
+  larger than its pane, the footprint exceeds the pane, the offset saturates to
+  `(0, 0)`, and **every picture stays in the corner while all four of gate item
+  1's assertions pass green**. `pane_offset` exists to make that unreachable
+  rather than merely warned about: it takes the buffer, runs `pane_viewport` and
+  `fit` exactly as `pane_sequence` does, and hands `centre_offset` the fitted
+  pair. Gate item 3 asserts it on a buffer whose native and fitted sizes differ,
+  which is the only assertion that can tell the two implementations apart.
+
+  Two mechanical points:
 
   - **The image's footprint in cells is computed by rounding *up*.** A 427px-tall
-    image in 36px cells occupies 12 rows, not 11.86, and using the floor would
-    overestimate the free space and offset the image past the pane's bottom edge
-    — §2.14's row 8 by a new route. Ceiling the footprint underestimates the
-    offset, which is the safe direction, exactly as `src/term.rs:cell_size`'s
-    truncation is.
+    image in 36px cells occupies 12 rows, not 11.86. What forces the ceiling is
+    **gate item 1's `(19, 9)`**, not a spill: a 24×24 image is 0.67 rows, which
+    the floor calls 0 and centres as though it occupied nothing, giving `(19,
+    10)` and sitting a row low. *(An earlier draft justified this as spill
+    prevention. That was wrong and is corrected rather than quietly dropped: the
+    round-1 reviewer searched every `cell` in 1..39 against every `pane` in 1..59
+    and found **zero** cases where the floor pushes an image past its pane,
+    because `fit` already guarantees `ceil(h/cell) ≤ pane`. Ceiling is still the
+    conservative rule; the reason it is required is smaller and more exact than
+    the reason first given.)*
   - **The offset is saturating.** An image whose footprint exceeds its pane
-    yields `(0, 0)` rather than an underflow. `src/display.rs:fit` should make
-    that unreachable, but "should be unreachable" is how the zero-axis path in
-    Phase 4's gate item 2 got in.
+    yields `(0, 0)` rather than an underflow. Reached through `pane_offset` that
+    is unreachable, since `fit` clamps first — but `centre_offset` is public and
+    pure, and "should be unreachable" is how the zero-axis path in Phase 4's gate
+    item 2 got in.
 
   `src/tui.rs:blank` keeps clearing the **whole** image area rather than the
   centred rectangle: what has to be erased is wherever the *previous* image was,
   and after this change that is no longer the pane's corner.
 
-- **Exit gate:** four items runnable by `cargo test` with no terminal, and one a
+- **Exit gate:** six items runnable by `cargo test` with no terminal, and one a
   human checks. The blast radius is one dispatch arm, one flag and one offset, so
   the regression item is the whole suite rather than a reading of it.
 
@@ -1364,25 +1406,55 @@ independent, so the gate keeps them separate.
      tall, in the same pane. An image exactly filling the pane (640×720) → `(0,
      0)`. An image *larger* than its pane (800×900) → `(0, 0)` by saturation, not
      an underflow.
-  2. **The rounding is up, and asserted as the thing it prevents.** A 640×433
-     image in the same pane → `(0, 4)`, **not** `(0, 3)`: 433/36 is 12.03, so the
-     footprint is 13 rows and the free space 7, whose half is 3 — the floor would
-     say 12 rows, 8 free, offset 4, and put the image's last row past the pane.
-     One assertion, and it is the whole reason the rounding is named.
-  3. **`--browse` parses, and parses beside everything Phase 4 pinned.**
+  2. **The rounding is up, asserted where the two rules disagree.** A 640×433
+     image in the same pane → **`(0, 3)`**, *not* `(0, 4)`: 433/36 is 12.03, so
+     the footprint is 13 rows, the free space 7, and its half 3. The floor rule
+     would say 12 rows, 8 free, offset 4 — so this literal is the one place the
+     two rules produce different answers on the same input, which is what makes
+     it worth an assertion. Item 1's `(19, 9)` is the other half of the pin:
+     the floor gives `(19, 10)` there. *(Both literals were re-derived at round 1
+     under both rules; an earlier draft had this item asserting the floor's
+     answer while its own prose derived the ceiling's.)*
+  3. **`pane_offset` fits before it centres.** A **1200×800** buffer in a
+     40×20-cell pane at 16×36 → `(0, 4)`: `fit` returns 640×427 for that pane,
+     and 427px is 12 rows. Passing the buffer's native size instead returns
+     `(0, 0)`, so this single assertion separates the correct implementation from
+     the one part 2 says an implementer reaches for — and it is the only item
+     that can, since item 1 exercises `centre_offset` on pairs that are already
+     fitted.
+  4. **`--browse` parses, and parses beside everything Phase 4 pinned.**
      `["tikray", "--browse", "a.png"]` → `browse` set with the path, no
      subcommand; `["tikray", "--browse"]` → `browse` set with no path, which is
      decision 3's "the bare `tikray`, not an error"; and
      `["tikray", "view", "--browse", "a.png"]` → **an error**, since `--browse`
      is not `view`'s flag and a surface selector on the invocation that already
      names its surface means nothing.
-  4. **Phases 1–4's gates still pass, unmodified.** All 52 assertions — 16, 11,
+  5. **The dispatch itself is asserted, headlessly, through the binary.** The
+     phase's headline change otherwise rests entirely on a human item, and it
+     does not have to: the three branches give **three different refusals** with
+     no terminal, which is exactly what makes them distinguishable to a test.
+     Following `tests/gate.rs:run_without_iterm2`, with stdout on a pipe and both
+     terminal variables cleared — `tikray <a PNG fixture>` exits non-zero
+     reporting **not a tty** (the inline surface's refusal, §2.7, which is also
+     item-1-of-decision-1's evidence that the branch runs detection at all);
+     `tikray <a directory>` exits non-zero reporting **no screen** (the browser's
+     refusal); and `tikray <a missing path>` reports **neither**, failing at the
+     stat before either surface starts. Three assertions, no terminal, and they
+     fail if the dispatch is wired backwards.
+  6. **Phases 1–4's gates still pass, unmodified.** All 52 assertions — 16, 11,
      12 and 13 — green with no edits to any of the four files. **Item 3 of
      Phase 4's gate is the load-bearing one**: it asserts what `["tikray",
      "a.png"]` *parses* to, this phase changes what that value *dispatches* to,
      and the two must not be confused. If this item cannot pass, the parse and
      the dispatch have been conflated.
-  5. **Human, in iTerm2:** `tikray <file>` draws the image inline and returns to
+
+     One shipped test name goes stale and is **left that way**:
+     `gate3_a_bare_path_is_the_tui_starting_there` describes a dispatch this
+     phase reverses, though every assertion under it still holds because they are
+     about parsing. Renaming it would be an edit to a shipped gate file, which
+     this item forbids for a better reason than tidiness. Item 5 is where the new
+     truth is asserted under a name that means it.
+  7. **Human, in iTerm2:** `tikray <file>` draws the image inline and returns to
      the prompt; `tikray <dir>` and bare `tikray` open the browser;
      `tikray --browse <file>` opens the browser at that file's directory **with
      the file highlighted**, which is the assertion that the restored affordance
@@ -1394,17 +1466,33 @@ independent, so the gate keeps them separate.
      a centred image that spills is a worse regression than an uncentred one.
 
   Tests land in `tests/gate_phase6.rs`; the four existing gate files are not
-  edited, which is item 4. Item 5 extends `scripts/gate-phase4.sh` rather than
-  adding a script, since it is the same walk with two changed answers and one
-  new invocation.
+  edited, which is item 6. Item 7 **amends** `scripts/gate-phase4.sh` rather than
+  adding a script beside it, and the distinction that makes this legal is worth
+  stating: an assertion file is *evidence* and a gate script is a *procedure*.
+  Phase 4's evidence — `tests/gate_phase4.rs` and its exit-gate entry in the
+  review record — is untouched and stays true. Its script asks a question whose
+  right answer this phase changes ("did it open the browser on samples/ with
+  landscape.svg highlighted?"), and a procedure that tracks the code is the same
+  contract `rules/` files carry. A script left stale would fail for the wrong
+  reason, which is worse than one that was amended in the open.
 
-- **Close-out:** updates `rules/tui.md` (the dispatch table, `--browse`, the
-  centring arithmetic — it sits at **74/75 lines**, so `max_lines` needs raising
-  in the same edit, and Phase 4's exit-gate record already flags it as the first
-  thing to trim). Updates `README.md`'s Usage block and its Browsing section,
-  both of which state the old grammar, and `rules/convert.md`'s note that `run`
-  dispatches three surfaces — it dispatches four now. **`CLAUDE.md` needs no
-  change**; it names no invocation.
+- **Close-out:** four documents, and two of them are the kind a close-out
+  usually misses:
+
+  | Artifact | Why it changes |
+  |---|---|
+  | `rules/tui.md` | the dispatch table, `--browse`, the centring arithmetic. At **74/75 lines**, so `max_lines` rises in the same edit — Phase 4's exit-gate record already names it the first thing to trim |
+  | `rules/core-pipeline.md` | it declares `src/cli.rs` in `sources` and states that `src/main.rs:run` dispatches `src/cli.rs:Command` for the one-shot surfaces and `src/tui.rs:run` for the browser — **false** once a bare file reaches the inline surface with no `Command` at all |
+  | `rules/convert.md` | its note that `run` dispatches three surfaces; it dispatches four |
+  | `README.md` | the Usage block and the Browsing section, both of which state the old grammar |
+
+  `src/cli.rs`'s **module doc** is part of the scope rather than the close-out,
+  because leaving it would ship a file arguing against what it implements — but
+  it is named in both places on purpose: `/sync-rules` reads that file to
+  regenerate `rules/core-pipeline.md`, so a stale doc comment there propagates
+  into a rule on the next pass.
+
+  **`CLAUDE.md` needs no change**; it names no invocation.
 
 <!--
 The review record is a sibling file, not a section: it lives at

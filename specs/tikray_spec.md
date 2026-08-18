@@ -1886,7 +1886,7 @@ neither worth its own review round — and the gate keeps them separate.
   `previewable` therefore composes `detect` with `src/load.rs:ALLOWED`, which is
   the same pairing `src/load.rs:load` performs.
 
-  Six decisions:
+  Four decisions:
 
   1. **Detection is by content, at the cost of an open and a 1024-byte read per
      entry per directory change.** Extension-based filtering is free and is
@@ -2401,11 +2401,14 @@ A hidden *file* is filtered when it is not an image; a hidden *directory* is
 never filtered at all. So the browser already hides some hidden things and not
 others, on a distinction with no rule behind it.
 
-- **Scope:** one predicate in `src/tui.rs:entries`, and one key.
+- **Scope:** one predicate, one key, and four call sites — the predicate is three
+  lines and the rest is what it disturbs.
 
   | File | Entry points |
   |---|---|
-  | `src/tui.rs` | `entries` gains the dot rule; `+ pub fn entries_with(dir, all, keep)` — decision 3's exemption, with `entries` delegating so Phase 7's gate stays green; `Browser::key` binds `.` where it bound `a`; `keys` renders `.` |
+  | `src/tui.rs` | `entries` gains the dot rule; `+ pub fn entries_with(dir, all, keep: Option<&OsStr>)` — decision 3's exemption, with `entries` delegating so Phase 7's gate stays green |
+  | `src/tui.rs` | `Browser::open` passes its focus to `entries_with` (decision 3); `Browser::toggle_all` resets zoom and result when the highlight moves (decision 4); `Browser::reload_preview`'s empty-directory message (decision 5) |
+  | `src/tui.rs` | `Browser::key` binds `.` where it bound `a`; `keys` renders both footer states |
 
   **Why Phase 7's exemption does not cover this, which is the argument the phase
   turns on.** Its decision 2 says *"directories are never filtered — they are how
@@ -2423,7 +2426,7 @@ others, on a distinction with no rule behind it.
   line (decision 3). That is the intended cost, not an oversight, and it is the
   price of the listing being useful at all on a home directory.
 
-  Four decisions:
+  Six decisions:
 
   1. **Hidden means a leading `.`, and nothing else.** macOS's `UF_HIDDEN` flag
      hides `~/Library` without a dot, and Windows has its own attribute; neither
@@ -2443,7 +2446,12 @@ others, on a distinction with no rule behind it.
      and the off-state's shipped wording stops being true: `src/tui.rs:keys`
      renders `"images only"` when the filter is off, which is now half the story.
      It becomes **`. filtered`** off and **`. all (12 hidden)`** on — the key
-     first in both, and neither claiming the filter is about images alone.
+     first in both, and neither claiming the filter is about images alone. There
+     is a third state, and `src/tui.rs:keys` today resolves it by omission: with
+     the filter on and **nothing** hidden, the hint disappears entirely. That
+     stays, and is stated rather than carried over implicitly — a key advertised
+     for a filter holding nothing back is noise, and the directory itself is the
+     evidence that nothing is missing.
   3. **An explicitly named path always opens, hidden or not — and the file half
      needs a mechanism, not a claim.** `tikray ~/.config` browses there and
      `tikray --browse ~/.x.png` highlights that file, because **naming a path is
@@ -2469,7 +2477,11 @@ others, on a distinction with no rule behind it.
      7's gate item 6, which calls `entries`, stays green and unmodified. The
      exemption is one entry, in one directory, at startup: navigate away and come
      back and it is hidden like anything else, because by then it is a listing
-     again rather than a request. **The filter's state is untouched**, so `.`
+     again rather than a request. Pressing `.` twice drops it for the same reason
+     — `src/tui.rs:toggle_all` relists without the `keep` — so the named file
+     vanishes and the highlight falls to row 0, which decision 4 then handles by
+     resetting the zoom. Coherent with "one entry, one directory, at startup",
+     and named so it is not read as a leak. **The filter's state is untouched**, so `.`
      still means what it means and the footer's count stays honest — which is why
      this is preferable to starting with the filter off, the surprise this
      decision rejects in its next breath.
@@ -2521,9 +2533,10 @@ others, on a distinction with no rule behind it.
      `.secret.svg` **and still excludes** `.git/`, `.cache/` and `.DS_Store` — one
      exemption, not a filter that gave up. And `entries(dir, false)` is unchanged
      by the sibling existing, which is what keeps Phase 7's gate item 6 green.
-     This is decision 3's file half, and it is machine-checkable precisely
-     because the exemption was made a listing rule rather than a `Browser`
-     behaviour.
+     This is decision 3's file half — **the rule, not the wiring.** Making the
+     exemption a listing rule rather than a `Browser` behaviour is what put it
+     within reach of a test at all; that `src/tui.rs:Browser::open` actually
+     passes the focus to it is item 5's, and item 5 says so.
   4. **Phases 1–9's gates still pass, unmodified**, all 97 assertions across
      eight files plus `scripts/gate-phase9.sh`.
   5. **Human, in iTerm2:** `tikray ~` opens on a listing with **no dot-entries**,
@@ -2534,6 +2547,16 @@ others, on a distinction with no rule behind it.
      A directory whose contents are wholly hidden says how many, not "empty"
      (decision 5). And zoom into an image, then press `.` — if the highlight
      moves, the zoom returns to fit (decision 4).
+
+     **`tikray --browse <a hidden file>` opens with that file highlighted, and
+     this is the only check that decision 3 was wired in at all.** Item 3
+     exercises `entries_with` as a listing rule, which is where the rule can be
+     asserted — but `src/tui.rs:Browser::open` is private, so an implementation
+     that adds the sibling, leaves `open` calling `entries`, and ships passes
+     every machine item green while the complaint that produced the decision
+     survives untouched. Phase 7 met this exact shape and could not avoid it —
+     its indent only appears on a tty and `cargo test` gets a pipe. **Here it is
+     avoidable in one clause, so it is not left to a pty measurement.**
 
      **Item 5 amends `scripts/gate-phase4.sh`**, on the evidence-versus-procedure
      grounds Phase 6 recorded, rather than being run once and forgotten. Its

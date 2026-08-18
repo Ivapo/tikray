@@ -2607,9 +2607,12 @@ worse than a long one, so the audit runs **both ways** and adds three checks
 while removing three.*
 
 **Appended 2026-08-18, from asking whether the script had grown too big.**
-Measured: `scripts/gate-phase4.sh` is **385 lines, 10 sections, 29 questions and
-12 launches** (9 of them TUI sessions; three are inline draws). It accreted one
-phase at a time with nothing ever removed or re-examined.
+Measured **after Phase 10 shipped**, since that phase completed its own gate
+section while this one was in review: `scripts/gate-phase4.sh` is **411 lines,
+10 sections, 33 questions and 13 launches**. (At drafting it was 385/29/12 —
+the growth *during* this phase's four review rounds is itself the accretion the
+phase is about.) It accreted one phase at a time with nothing ever removed or
+re-examined.
 
 **The first draft of this phase was a pure trim and its central claim was
 wrong**, which is recorded because the error is the interesting part: it proposed
@@ -2617,8 +2620,12 @@ cutting §3 on the grounds that `tests/gate_phase6.rs:gate5_a_bare_directory_rea
 covers it. That test pipes stdout, so `src/tui.rs:run` returns `NoScreen` at
 `src/term.rs:detect_iterm2` **before `Browser::open` is ever constructed** — it
 proves the browser *surface* was selected, never that the browser *starts at the
-named directory*. And `tikray samples` in §3 is the **only launch in the whole
-script that passes a directory at all**; every other one `cd`s first. Cutting it
+named directory*. And when this was found, `tikray samples` in §3 was the
+**only launch in the whole script that passed a directory at all** — every other
+one `cd`s first. *(Phase 10's §8 has since added `tikray "$HID/.hidden-dir"`, so
+§1's argument is now a second cover rather than the only one. The finding stands:
+it was true when the cut was proposed, and the cut would have been made against a
+script where it was true.)* Cutting it
 would have left a regression that browses the working directory instead of the
 named one invisible to all 104 assertions and all surviving sections.
 
@@ -2663,17 +2670,21 @@ named one invisible to all 104 assertions and all surviving sections.
      §8's temp directory holds exactly **one** file, and `src/tui.rs:index_of`
      falls back to row 0 — so its question passes whether the selection was
      wired or not, where §4 runs against `samples/` with the file at row 3 of 6.
-     A **subdirectory is added** to §8's fixture (directories sort first), so row
-     0 is not the answer and "highlighted, not merely the right directory" —
-     Phase 6's item 7 calls that "not a near miss" — is actually tested.
+     **Phase 10 has since shipped that fixture** — §8 now carries a visible
+     `sub/` at row 0 and the hidden file at row 1, and asks "not `sub/`, which is
+     the first row?" So row 0 is no longer the answer, and "highlighted, not
+     merely the right directory" — Phase 6's item 7 calls that "not a near miss"
+     — is genuinely tested. This decision is therefore a **finding that has
+     already been acted on elsewhere**, kept because it is the reason §4 can be
+     cut at all and because the reasoning is what a later reader needs.
 
      **It must be a *visible* subdirectory**, which is worth pinning because a
      dot-named one is the tempting choice in a fixture whose whole subject is
      dot-entries — and Phase 10's own rule would then filter it, the listing
-     would drop back to one row, and this defect would return intact. It also
-     earns its keep twice more: filled with only hidden entries it becomes the
-     concrete subject for §8's otherwise subjectless "did it say how many?", and
-     the target for the ascend check below.
+     would drop back to one row, and this defect would return intact. In
+     Phase 10 it earns its keep twice more: filled with only hidden entries it is
+     the concrete subject for §8's "did it say how many?", and the entry `←`
+     lands on when ascending out of the hidden directory beside it.
   3. **Shipped spec text is not touched, and the precedent for editing this
      script does less work here than in Phases 6, 7, 8 and 10.** Each of those
      amended it because the code moved and the script would otherwise be *wrong*.
@@ -2697,9 +2708,18 @@ named one invisible to all 104 assertions and all surviving sections.
   1. **Every check named as a replacement still exists.**
      `tests/gate_phase11.rs` reads the other gate files and asserts, **by name**:
      `tests/gate.rs:gate4_force_emits_anyway` and `src/main.rs:view` for §5's
-     cut, and that `scripts/gate-phase4.sh` still contains the strings the moved
-     checks became — `"$REPO/samples"` as an argument in §1, and `--browse` on a
-     hidden file in §8. Unusual, and it earns its place: this phase's whole
+     cut, and that `scripts/gate-phase4.sh` still contains the **call forms** the moved
+     checks became: the literal `"$TIKRAY" "$REPO/samples"` for §1, and
+     `--browse` on a hidden file for §8.
+
+     **The call form, not the path**, and this is the correction round 4 forced:
+     `"$REPO/samples"` occurs **four times in the script today**, every one a
+     `cd` target — so an assertion on that substring is green *before* this phase
+     changes anything and stays green if §1's argument is never added or is later
+     reverted, with the other occurrences keeping it alive. That is exactly the
+     silent rot decision 3's licence is conditioned on, and the phase had already
+     applied this precision one clause earlier for `view` and failed to apply it
+     here. Unusual, and it earns its place: this phase's whole
      justification is "something cheaper checks that now", and a rename or a
      deletion evaporates it **silently**, leaving a human gate that stopped
      asking and no machine gate that started.
@@ -2722,14 +2742,16 @@ named one invisible to all 104 assertions and all surviving sections.
      documented the cut sections go with them. It still asks about the border,
      the indent, the centring, the pane-rendered flattening notice, the
      `--browse` highlight on a hidden file **against a fixture with more than one
-     entry**, both interruptions, and the three newly added checks.
+     entry**, both interruptions, and the two newly added checks.
 
-  **This phase should be built before Phase 10 is gated.** Phase 10 is
-  implemented with `reviewed` set and `shipped` null; §8 is its section and is
-  improved rather than cut here, and two of the three additions are *its* missing
-  clauses. So one shorter and more complete run discharges both, where the
-  alternative walks a person through 29 questions and then deletes a third of
-  them. The review record notes the out-of-order ship as it did for Phase 6.
+  **Phase 10 shipped first, and this phase no longer gates anything.** The
+  paragraph here previously argued for building this *before* Phase 10's human
+  run so one shorter pass discharged both. That is counterfactual now: the human
+  decoupled them, Phase 10's own checks went back to Phase 10, and its gate ran
+  against the long script on 2026-08-18. What remains is a plain simplification
+  with **nothing waiting on it** — worth stating, because it changes the phase's
+  urgency to none and makes withdrawing it a reasonable option rather than a
+  loss.
 
 - **Close-out:** `README.md` line 216 describes the script as covering "the human
   items for Phases 4-8 and 10", which stays literally true and stops being

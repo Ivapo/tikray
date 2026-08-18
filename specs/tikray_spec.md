@@ -56,7 +56,7 @@ phases:
     by: null
   - name: "Phase 10 — hide dot-entries, and rename the toggle to `.`"
     reviewed: 2026-08-18
-    shipped: null
+    shipped: 2026-08-18
     cut: null
     by: null
   - name: "Phase 11 — cut the human gate down to what a machine cannot see"

@@ -65,7 +65,7 @@ phases:
     cut: 2026-08-18
     by: tkr-001
   - name: "Phase 12 — wrap-around, a wider preview, and a scroll thumb"
-    reviewed: null
+    reviewed: 2026-08-18
     shipped: null
     cut: null
     by: null
@@ -2963,6 +2963,11 @@ is any *indication* that it scrolled — which is what the thumb below is.
      operator's disk. The thumb appears there, reaches the bottom when the list
      does, and is **absent in `samples/`** (6 rows), which is the contrast that
      shows `None` is reached rather than the thumb merely being invisible.
+
+     It appends as **§11** — the sections are independent, so the position
+     carries nothing. And 60 rows fit on a window taller than about 63, where the
+     check then fails **loudly** ("did a thumb appear?" — no) rather than passing
+     silently, which is the safe direction for a margin to be wrong in.
 
   Tests land in `tests/gate_phase12.rs`; the nine existing gate files are not
   edited. Item 5 amends `scripts/gate-phase4.sh` — the only edit this phase makes

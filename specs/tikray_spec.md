@@ -36,7 +36,7 @@ phases:
     by: null
   - name: "Phase 6 — the bare path draws inline, and the preview sits in the middle"
     reviewed: 2026-08-17
-    shipped: null
+    shipped: 2026-08-17
     cut: null
     by: null
 

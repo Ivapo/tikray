@@ -49,6 +49,11 @@ phases:
     shipped: 2026-08-18
     cut: null
     by: null
+  - name: "Phase 9 — link only the codecs tikray decodes"
+    reviewed: null
+    shipped: null
+    cut: null
+    by: null
 
 extends: null
 supersedes: null
@@ -2176,6 +2181,90 @@ though not in the direction that question expected.
   eighth phase falsifies. **`CLAUDE.md` needs no change** — it names no
   invocation and no key. `max_lines` raises are not predicted; see Phase 5's
   close-out for why.
+
+### Phase 9 — link only the codecs tikray decodes
+*Produces the observable: no, and the argument is short. Nothing a user sees
+changes — that is the entire claim being made, and gate item 1 is what proves
+it. §3 requires a phase producing no observable to be argued for rather than
+assumed: this one exists because a decision recorded in `Cargo.toml` turned out
+to cost 1.1 MiB of binary for a property the code enforces elsewhere.*
+
+**Appended 2026-08-18, prompted by installing the tool for the first time.** The
+release binary was 11.3 MiB. A profile nobody had set accounted for 6.3 MiB of
+that and was fixed as code (no `rules/` file documents a profile, nothing in the
+spec mentions one). What is left is a **decision**: `Cargo.toml` says default
+features are kept deliberately, citing §2.4 and §2.8, and `image`'s defaults are
+**fifteen codecs** — avif, bmp, dds, exr, farbfeld, gif, hdr, ico, jpeg, png,
+pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
+
+- **Scope:** one line of `Cargo.toml`.
+
+  ```toml
+  image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+  ```
+
+  **The comment above it is the real change**, because the current one argues the
+  opposite and is not wrong — it is aimed at something else. §2.8's claim is that
+  *support is an explicit allowlist rather than whatever the dependency links
+  in*, and `src/load.rs:ALLOWED` is what enforces it. Linking fifteen codecs was
+  never what made that true; it was the accident the allowlist was written to
+  survive. Narrowing the dependency makes §2.8's claim **more** literally true,
+  not less.
+
+  **Why refusals still name the format, which is the whole safety argument.**
+  Measured, and `rules/core-pipeline.md` recorded it at Phase 2: `image`'s
+  `MAGIC_BYTES` is a plain 22-entry static with **no `cfg` on any row**, and
+  `ImageFormat::extensions_str` has no feature gate either. So a build without
+  the GIF codec still *recognises* GIF by signature, `src/load.rs:allowed`
+  refuses it by name, and `src/error.rs:format_name` still renders "GIF". The
+  codec was never on that path. Confirmed against a real reduced build before
+  this phase was written: `still.gif` → *"is a GIF image, which tikray does not
+  support yet"*, and PNG, JPEG, SVG, 16-bit PNG and alpha-PNG all convert
+  unchanged.
+
+  `cargo tree -i image` shows **tikray is `image`'s only dependent**, so there is
+  no feature unification to undo the reduction.
+
+  Two decisions:
+
+  1. **`rayon` goes with them.** It is a default feature and tikray parallelises
+     nothing; it arrives only because `image` asks for it.
+  2. **The gate runs the binary, not `cargo test`.** This is the finding that
+     shapes the phase, and it would be easy to miss: **cargo unifies features
+     across normal and dev-dependencies**, and `tests/` declares
+     `image = "0.25"` with defaults. So under `cargo test` the library is built
+     with all fifteen codecs regardless of what this phase does — the existing 97
+     assertions would pass while proving nothing about the shipped artifact. A
+     gate that ran them and declared victory would be measuring the wrong build.
+
+- **Exit gate:** two items, and item 1 is deliberately not a `cargo test`.
+
+  1. **The shipped binary behaves identically, asserted against the binary.** A
+     script builds `--release` and runs it, not the test harness: `still.gif` is
+     refused with a message containing **"GIF"** (not "could not be determined");
+     `not_an_image.png` and `icon24.svgz` are still undetermined; and
+     `rgb.png`, `rgb.jpg`, `icon24.svg`, `bom.svg`, `wide.svg`, `alpha.png` and
+     `deep16.png` all convert to PNG, with `deep16.png` coming back **16-bit**
+     (Phase 3's item 3, at the one place a feature cut could quietly quantize it).
+     Distinct destination names per case — a shared one hits the overwrite guard
+     and reports a failure that is the harness's, not the tool's.
+  2. **Phases 1–8's gates still pass, unmodified**, all 97 assertions across
+     eight files. They prove the source is unchanged; item 1 proves the artifact
+     is. Both are needed and neither substitutes for the other, which is the
+     point of decision 2.
+
+  No new fixtures and no new test file: item 1 is `scripts/gate-phase9.sh`,
+  which is a *procedure* and belongs in `scripts/` for the reason Phase 6
+  recorded.
+
+- **Close-out:** `Cargo.toml`'s comment, and `rules/core-pipeline.md`, whose
+  allowlist section says "With default features `image` also decodes GIF, BMP,
+  TIFF, ICO, QOI and WebP" — true today and false after this, though the sentence
+  it supports ("sniffing is feature-independent, so the detected name is right
+  even for formats the build cannot decode") becomes the *load-bearing* one
+  rather than a footnote. `README.md` says "Anything else `image` can decode —
+  GIF, BMP, TIFF, WebP — is refused by name", which stays true and now describes
+  a smaller build. **`CLAUDE.md` needs no change.**
 
 <!--
 The review record is a sibling file, not a section: it lives at

@@ -54,6 +54,11 @@ phases:
     shipped: 2026-08-18
     cut: null
     by: null
+  - name: "Phase 10 — hide dot-entries, and rename the toggle to `.`"
+    reviewed: null
+    shipped: null
+    cut: null
+    by: null
 
 extends: null
 supersedes: null
@@ -1890,7 +1895,12 @@ neither worth its own review round — and the gate keeps them separate.
      hid that file would make the list disagree with the loader about what
      tikray can draw. 1024 bytes is not a guess — it is
      `src/load.rs:SVG_SNIFF_LIMIT`, the furthest the SVG rule looks.
-  2. **`a` toggles the filter off**, and the browser says how many entries are
+  2. **`a` toggles the filter off** *(**CORRECTED 2026-08-18 — Phase 10 renames
+     this key to `.`**, the convention for revealing hidden entries and the
+     better mnemonic once dot-entries are the toggle's most visible effect. `a`
+     is retired rather than aliased: §2.12 refused one letter meaning three
+     things, and two letters meaning one thing is the same bloat from the other
+     side.)*, and the browser says how many entries are
      hidden while it is on. A filtered directory of PDFs would otherwise be
      indistinguishable from an empty one, which is the failure that makes a
      hidden-by-default list worse than no list. Directories are never filtered —
@@ -2356,6 +2366,112 @@ pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
   true**: they are about `detect` admitting six formats the allowlist then
   refuses, which is sniffing and is feature-independent. Named so the sweep is
   bounded rather than open-ended.
+
+### Phase 10 — hide dot-entries, and rename the toggle to `.`
+*Produces the observable: yes, at one remove — it changes which images a person
+is offered, and on a home directory it decides whether the first screen contains
+any at all.*
+
+**Appended 2026-08-18, from using the installed tool.** The complaint was that
+`tikray <a directory>` lists hidden folders, and the numbers make the case
+better than the objection did: **47 dot-entries against 14 visible** in the home
+directory that prompted it, sorting **first** because `.` precedes every letter.
+For a tool whose whole job is finding an image to look at, that is the worst
+available first screen.
+
+**The shipped rule is also inconsistent in a way nobody could predict.** Measured:
+
+```
+filter on   → .cache/  .git/  visible/  .secret.svg  pic.svg
+filter off  → .cache/  .git/  visible/  .DS_Store  .secret.svg  notes.txt  pic.svg
+```
+
+A hidden *file* is filtered when it is not an image; a hidden *directory* is
+never filtered at all. So the browser already hides some hidden things and not
+others, on a distinction with no rule behind it.
+
+- **Scope:** one predicate in `src/tui.rs:entries`, and one key.
+
+  | File | Entry points |
+  |---|---|
+  | `src/tui.rs` | `entries` gains the dot rule; `Browser::key` binds `.` where it bound `a`; `keys` renders `.` |
+
+  **Why Phase 7's exemption does not cover this, which is the argument the phase
+  turns on.** Its decision 2 says *"directories are never filtered — they are how
+  you leave"*, and that is right about **previewability**: hide a directory for
+  not being an image and you cannot descend into it. It does not extend to the
+  dot rule, because **leaving is `←`, not a row** — `..` is deliberately never
+  synthesised (Phase 4) — so hiding `.git/` impedes no navigation whatever. The
+  reason that protected directories from one filter simply is not a reason
+  against the other, and checking that rather than assuming it is why this phase
+  is three lines instead of a redesign.
+
+  Four decisions:
+
+  1. **Hidden means a leading `.`, and nothing else.** macOS's `UF_HIDDEN` flag
+     hides `~/Library` without a dot, and Windows has its own attribute; neither
+     is honoured. Named as a non-goal rather than left to be discovered: the dot
+     convention is portable, is what `ls` and every file manager mean, and covers
+     the case that prompted this.
+  2. **One toggle, renamed `.`, and `a` is retired.** The two filters —
+     not-an-image and dot-prefixed — clear together under one key, because "show
+     me this directory as it really is" is one intention. `.` is the convention
+     for revealing hidden entries and the better mnemonic once dot-entries are
+     the toggle's most visible effect. **`a` is not kept as an alias**: §2.12
+     refused one letter meaning three things, and two letters meaning one thing
+     is the same vocabulary bloat from the other side. This retires a key that
+     shipped in Phase 7, which is why that decision carries a dated note.
+  3. **An explicitly named path always opens, hidden or not.** `tikray
+     ~/.config` browses there and `tikray --browse ~/.x.png` highlights that
+     file, because **naming a path is a request and a listing is a heuristic** —
+     the same principle that makes `./view` the escape hatch for a file named
+     `view` (§2.9). Contents are then filtered normally, and the filter starts
+     **on** regardless of where you started: making the initial state depend on
+     the start path is a surprise the first time it happens.
+  4. **Ascending out of a hidden directory lands on the parent's first row, and
+     that is a named cost.** `src/tui.rs:index_of` falls back to the first entry
+     when the name it is looking for is not in the listing, which is exactly what
+     happens pressing `←` out of `~/.config` while the filter hides it. The
+     alternatives are worse: revealing one hidden row among hidden rows is
+     arbitrary, and turning the filter off automatically is decision 3's rejected
+     surprise. Recorded so it is a known papercut rather than a bug report.
+
+- **Exit gate:** three items runnable by `cargo test` with no terminal, and one a
+  human checks. The keys live in the private `Browser`, so they are human-gated
+  as Phases 4, 5 and 8's were; the filtering is a public function and is not.
+
+  1. **`entries` hides dot-entries, files and directories alike.** In a fixture
+     tree containing `.git/`, `.cache/`, `visible/`, `.DS_Store`, `.secret.svg`,
+     `notes.txt` and `pic.svg`: filtered yields **`visible/` and `pic.svg`
+     only**; `all = true` yields all seven. **`.secret.svg` is the case that
+     matters** — previewable *and* hidden, so it proves the two filters are
+     independent rather than one being a special case of the other, and a
+     dot-directory being absent proves Phase 7's exemption was narrowed
+     deliberately rather than by accident.
+  2. **Phase 7's own listing assertions are untouched.** `tests/fixtures/`
+     contains no dot-entries — verified before this phase was written — so
+     `tests/gate_phase7.rs`'s three membership tests mean exactly what they meant
+     before. Asserted here rather than assumed, because a fixture added later
+     with a leading dot would silently change what that shipped gate proves.
+  3. **Phases 1–9's gates still pass, unmodified**, all 97 assertions across
+     eight files plus `scripts/gate-phase9.sh`.
+  4. **Human, in iTerm2:** `tikray ~` opens on a listing with **no dot-entries**,
+     `.` reveals them and `.` again hides them, and `a` now does nothing. The
+     hidden count in the footer covers both kinds. `tikray ~/.config` opens
+     there despite being hidden, and `←` out of it lands on the parent's first
+     row (decision 4).
+
+  Tests land in `tests/gate_phase10.rs` with their own fixture tree built in
+  `CARGO_TARGET_TMPDIR` — dot-entries are not added to `tests/fixtures/`,
+  precisely so item 2 stays true.
+
+- **Close-out:** `rules/tui.md`'s listing section and its `a`; `README.md`'s
+  Browsing section, which names `a` twice; `scripts/gate-phase4.sh`, whose
+  section 1 instructs the human to press `a`; and `src/tui.rs:entries`' doc
+  comment, which carries Phase 7's "directories are never filtered" verbatim and
+  feeds `/sync-rules`. `tikray.md`'s phase count. **`CLAUDE.md` needs no
+  change** — it names no key, which is the test Phase 9 had to learn to state
+  correctly.
 
 <!--
 The review record is a sibling file, not a section: it lives at

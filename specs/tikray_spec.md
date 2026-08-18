@@ -46,7 +46,7 @@ phases:
     by: null
   - name: "Phase 8 — zoom in the browser, in three centred steps"
     reviewed: 2026-08-18
-    shipped: null
+    shipped: 2026-08-18
     cut: null
     by: null
 

@@ -117,7 +117,8 @@ dim "   Opening the repo's samples/ directory so there is something to look at."
 echo
 dim "   While you are in there, please do all four:"
 dim "     · arrow up and down — each highlighted image redraws in the right pane"
-dim "     · land on README.md — no image, and a line saying why"
+dim "     · press 'a' — everything appears, including README.md"
+dim "     · press 'a' again — back to images only, same file still highlighted"
 dim "     · RESIZE THE WINDOW, a few times, with an image showing"
 dim "     · press q to quit"
 echo
@@ -133,8 +134,16 @@ check_stty
 ask "Did each highlighted image draw inside the preview pane?"
 ask "Was it CENTRED in the pane, horizontally and vertically?"
 ask "Did the image stay INSIDE its border at every size you tried?"
-ask "Did a non-image (README.md) show a line saying why, instead of an image?"
 ask "After quitting: normal prompt, cursor visible, no leftover screen?"
+
+echo
+dim "   Phase 7 added the list filter, so README.md is no longer listed at all —"
+dim "   which is why the question above about a non-image is gone. Check the"
+dim "   filter instead: samples/ holds one README.md and one .gitignore-ish"
+dim "   file or two that are not images."
+ask "Were ONLY images and directories listed, with a hidden count in the footer?"
+ask "Did 'a' show everything, and 'a' again put the filter back?"
+ask "After toggling, was the SAME file still highlighted?"
 
 # ---------------------------------------------------------------------------
 # Phase 6 — a bare path dispatches on what the path IS
@@ -144,13 +153,28 @@ ask "After quitting: normal prompt, cursor visible, no leftover screen?"
 # opened the browser at that path's directory; the right answer is now no.
 
 echo
-bold "2. tikray <file> — draws inline, and gives the prompt back"
+bold "2. tikray <file> — draws inline, indented, and gives the prompt back"
 dim "   Running: tikray samples/landscape.svg"
 dim "   No browser, no alternate screen — the picture, then your prompt."
+echo
+bold "   This is the ONLY check that Phase 7's indent was wired in at all:"
+bold "   every machine assertion passes even if display() never calls it,"
+bold "   because the indent appears only on a tty and cargo test gets a pipe."
 echo
 ( cd "$REPO" && "$TIKRAY" samples/landscape.svg )
 echo
 ask "Did it draw inline and return to the prompt, taking no screen?"
+ask "Is it INDENTED — a small gap between the left edge and the picture?"
+
+echo
+dim "   And the half that matters more: the indent must come out of the WIDTH,"
+dim "   not be added to it. This image is 1200px wide — narrow your window until"
+dim "   it is the binding dimension, then re-run. It must still fit on one"
+dim "   screen, with no wrapping and no scrolling."
+pause "ready — narrow the window first"
+( cd "$REPO" && "$TIKRAY" samples/landscape.png )
+echo
+ask "Did it still fit on one screen, unwrapped, with the indent intact?"
 
 echo
 bold "3. tikray <dir> — browses there"

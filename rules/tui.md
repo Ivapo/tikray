@@ -6,10 +6,11 @@ sources:
   - src/main.rs
 covers: >
   the pane the image is drawn behind and why it survives a repaint, the cell
-  arithmetic that sizes and centres it, the four things that decide there is no
-  preview, the draw-then-place ordering, which surface each invocation reaches,
-  and the two interruptions that need different code
-max_lines: 105
+  arithmetic that sizes and centres it, what the list shows and what it hides,
+  the four things that decide there is no preview, the draw-then-place ordering,
+  which surface each invocation reaches, and the two interruptions that need
+  different code
+max_lines: 140
 generated: 2026-08-17
 ---
 
@@ -31,8 +32,9 @@ So `src/tui.rs:Browser`'s render leaves the image rectangle empty and puts its
 one explanation line in a row above it. That separation lets `src/tui.rs:blank`
 paint the rectangle directly: ratatui cannot erase an image it does not know is
 there, and blanking a row it had just drawn into would desync its buffer.
-`src/display.rs:display` is unusable here — it reads the whole-window viewport
-from `src/term.rs:viewport` — so this module calls `src/display.rs:sequence`.
+`src/display.rs:display` is unusable here — it sizes to the whole window and
+indents for a prompt that is not there — so this module calls
+`src/display.rs:sequence`.
 
 ## Sizing and centring a pane
 
@@ -55,6 +57,34 @@ picture sits in the corner with every assertion on `centre_offset` still green.
 native `(0, 0)` differ. The footprint rounds **up** — not against a spill, which
 `fit` already prevents, but because a 24×24 image is 0.67 of a row and the floor
 calls that zero and centres it a row low.
+
+## What the list shows
+
+`src/tui.rs:entries` lists directories first, then files, each by name. Files are
+kept only when `src/load.rs:previewable` accepts their first
+`src/load.rs:SVG_SNIFF_LIMIT` bytes — **by content, never by extension**, which
+costs an open and a 1024-byte read per entry per directory change.
+
+Extension filtering is refused for a reason a gate holds: `tests/gate.rs` has
+asserted since Phase 1 that a PNG named `.txt` loads, so an extension filter
+would hide exactly that file while `load` still drew it, leaving the list
+disagreeing with the loader. `tests/gate_phase7.rs` pins the same fixture from
+the listing side.
+
+`previewable` is the **allowlist**, not `src/load.rs:detect` alone — which admits
+GIF, BMP, TIFF, ICO, QOI and WebP, all of which `load` then refuses by name. A
+list offering files that cannot be drawn is worse than no list, because the
+refusal arrives after the choice. It is still only a byte rule: an SVG `usvg`
+rejects is listed and then fails to parse, which is §2.10's final-arbiter rule
+seen from this side.
+
+`a` toggles the filter off, the count of held-back rows sits in the footer beside
+that key — not in the list's border title, which `src/tui.rs:compact` already
+shows is too tight to trust — and the toggle **persists across directory
+changes**, since one that reset on entering a directory would need re-applying at
+the moment the user is searching. The highlight follows by name through
+`src/tui.rs:index_of`, never by index: toggling changes how many rows precede it.
+An unreadable entry is not previewable, so it is hidden rather than raised.
 
 ## Four ways there is no preview, and one refusal
 

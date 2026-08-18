@@ -1641,7 +1641,7 @@ neither worth its own review round — and the gate keeps them separate.
      this for `--browse` and going up a directory.
   4. **Four small placements, settled because the gate rides on the first.**
      The hidden count goes in the **footer, beside the key that clears it** —
-     `a all (12 hidden)` in `src/tui.rs:KEYS`. The list pane's border title is
+     `a all (12 hidden)` from `src/tui.rs:keys`. The list pane's border title is
      the obvious home and is the wrong one: it is 35% of the window wide,
      `src/tui.rs:compact` exists *only* because that title is already tight
      enough to need `$HOME` rewritten to `~`, and ratatui truncates an over-long

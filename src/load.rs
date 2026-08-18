@@ -14,7 +14,11 @@ use image::{DynamicImage, ImageFormat, ImageReader};
 use crate::error::TikrayError;
 
 /// How many bytes of the head the SVG rule may look through for `<svg`.
-const SVG_SNIFF_LIMIT: usize = 1024;
+///
+/// Public because [`previewable`] takes a head rather than a path, so the read
+/// happens in the caller — and a caller that guesses this number can hide an SVG
+/// whose `<svg` sits at byte 900.
+pub const SVG_SNIFF_LIMIT: usize = 1024;
 
 /// A UTF-8 byte-order mark, which an SVG is allowed to open with.
 const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
@@ -105,6 +109,22 @@ fn allowed(input: Input, path: &Path) -> Result<(), TikrayError> {
         }),
         Input::Raster(_) | Input::Svg => Ok(()),
     }
+}
+
+/// Whether `head` is something [`load`] would accept — the **allowlist**, not
+/// the signature table.
+///
+/// The distinction is the whole of it. [`detect`] alone admits GIF, BMP, TIFF,
+/// ICO, QOI and WebP, every one of which `load` then refuses by name, so a
+/// browser filtered on `detect` would offer files that cannot be drawn — a worse
+/// failure than no filter, because the refusal arrives after the choice. This
+/// composes the same two steps `load` performs.
+///
+/// It is a byte rule, so it is not a promise the file will parse: an SVG that
+/// `usvg` rejects passes here and fails at `load`, which is §2.10's "usvg
+/// remains the final arbiter" seen from the listing side.
+pub fn previewable(head: &[u8]) -> bool {
+    detect(head).is_some_and(|input| ALLOWED.contains(&input))
 }
 
 /// Read `path` into the pipeline's buffer.

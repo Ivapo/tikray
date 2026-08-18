@@ -96,6 +96,12 @@ oversight, and it is the one place vector input buys you nothing today.
 If the terminal does not report its size in pixels, Tikray falls back to the
 image's inherent size, which may scroll.
 
+An inline draw is indented two columns from the left edge, and **the indent comes
+out of the available width** rather than being added to it — so an image as wide
+as your window still fits on one screen. Redirect the output and you get the
+escape sequence with no indent at all: `--force` exists so the sequence can be
+captured, and leading spaces would corrupt it.
+
 ### `--force`
 
 Tikray refuses to emit unless stdout is a terminal *and* the environment looks
@@ -113,6 +119,12 @@ anyway.
 file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`) move, `⏎` (or `→`)
 enters a directory, `←` goes back up, and `q` quits. The highlighted image is
 drawn **centred** in the pane, scaled to it by the same rule below.
+
+**The list shows what tikray can draw** — images and directories — and the footer
+says how many entries are hidden. `a` shows everything and `a` again puts the
+filter back; the setting follows you into subdirectories. What counts as an image
+is decided by **reading each file**, not by its extension, so a PNG named `.txt`
+is listed as the PNG it is.
 
 **The preview is not a widget** — it is an image drawn behind a hole in the
 layout, which is why the pane is deliberately empty and why the rest of the

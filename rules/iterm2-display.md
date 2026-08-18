@@ -5,9 +5,9 @@ sources:
   - src/term.rs
 covers: >
   the OSC 1337 argument string, the fit-down-never-up sizing arithmetic, the
-  viewport and cell-geometry queries, and iTerm2 detection with its --force
-  override
-max_lines: 60
+  two-cell indent and where it comes out of, the viewport and cell-geometry
+  queries, and iTerm2 detection with its --force override
+max_lines: 95
 generated: 2026-08-17
 ---
 
@@ -49,6 +49,29 @@ defensive: `(10,3)` into `(1,100)` computes `round(0.3) = 0`, and a zero
 dimension is not legal. `None` in means the viewport was unreported; `None` out
 means emit `width=auto;height=auto`, which never upscales either.
 
+## The indent comes out of the viewport
+
+`src/display.rs:indented` puts `src/display.rs:INDENT` — **2** — spaces in front
+of the sequence, and `src/display.rs:indent` takes those two cells' worth of
+pixels **out of the viewport** before `fit` sees it. They are one decision and
+one function returns both: spaces without the shrink push a window-width image
+past the right edge, where iTerm2 wraps or scrolls it, and the shrink without the
+spaces silently narrows the image for no visible reason.
+
+Two conditions drop it, and in both the picture wins: no cell size (the indent is
+in cells, the viewport in pixels, so there is no conversion) and a viewport too
+narrow to spare it. **A piped stdout is never indented** — `--force` exists so
+the *sequence* can be captured to a file, and two spaces prepended to that byte
+stream are corruption. The predicate is `std::io::stdout().is_terminal()`, not a
+bound on `display`'s `out`, which need not be stdout. Mechanically the test
+yields `cell: None`, so there is no second code path.
+
+That last rule is load-bearing beyond taste: `tests/gate.rs:gate4_force_emits_anyway`
+asserts the binary's piped stdout starts at `\x1b]1337;File=`, and an
+unconditional indent breaks it **only where `window_size()` resolves** — from a
+real terminal and not from CI. `tests/gate_phase7.rs` restates it so the coupling
+is visible where it was made.
+
 ## Viewport, cell geometry, and detection
 
 `src/term.rs:viewport` reads `crossterm::terminal::window_size()` and treats an
@@ -61,8 +84,12 @@ well, and returns both pairs from one call because two reads can straddle a
 resize. `src/term.rs:cell_size` divides them, and is pure for the reason `fit`
 is: the four integers are injected, so the gates run with no terminal. A zero in
 any of them, or a quotient that truncates to zero, is the same "unreported" the
-viewport rule uses. Only `rules/tui.md`'s pane sizing needs it — `view` owns the
-whole window and never divides.
+viewport rule uses.
+
+`src/display.rs:display` reads `geometry` **once** and derives both the viewport
+and the cell size from that one pair, rather than calling `viewport` beside it:
+two reads can straddle a resize, which is the reason `geometry` returns both at
+all. `viewport`'s zero-axis rule is reapplied by hand at that call site.
 `src/term.rs:detect_iterm2` requires both a tty on stdout and one of
 `TERM_PROGRAM=iTerm.app` or `LC_TERMINAL=iTerm2`; the two survive different
 things (the latter an ssh hop, neither plain tmux). `--force` skips both, because

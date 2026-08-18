@@ -13,7 +13,7 @@ covers: >
   branches behind it, the per-phase input allowlist, the two output edges and
   the format matrix, the two callers over one core, and the error taxonomy the
   CLI renders to stderr
-max_lines: 100
+max_lines: 115
 generated: 2026-08-17
 ---
 
@@ -89,6 +89,9 @@ never a wrong render. `.svgz` opens `1f 8b`, fails the rule, and is not supporte
 
 `src/load.rs:ALLOWED` is `[Raster(Png), Raster(Jpeg), Svg]` — a check over
 `Input`, not over `[ImageFormat; 2]`, which is what SVG joining the list costs.
+`src/load.rs:previewable` is that same pairing exposed for callers who have bytes
+and no path — the browser's list filter — and it is the allowlist rather than
+`detect` alone precisely because the two differ by six formats.
 With default features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP, so
 `src/load.rs:allowed` refuses a decodable-but-unallowed input by name
 (`src/error.rs:format_name` renders the detected format) rather than silently

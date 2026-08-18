@@ -44,7 +44,22 @@ use crate::term;
 const POLL: Duration = Duration::from_millis(100);
 
 /// The keys, in the footer. Short enough that it needs no second row.
-const KEYS: &str = " ↑/↓ move   ⏎ open   ← up   q quit ";
+///
+/// The hidden count joins them here rather than in the list pane's border title,
+/// which is the obvious home and the wrong one: that title is 35% of the window
+/// wide, [`compact`] exists only because it is already tight enough to need
+/// `$HOME` rewritten to `~`, and ratatui truncates — so the count would vanish on
+/// exactly the narrow window where it matters. The footer spans the window.
+fn keys(all: bool, hidden: usize) -> String {
+    let filter = if all {
+        "  a images only".to_string()
+    } else if hidden > 0 {
+        format!("  a all ({hidden} hidden)")
+    } else {
+        String::new()
+    };
+    format!(" ↑/↓ move   ⏎ open   ← up{filter}   q quit ")
+}
 
 /// Why there is no preview, for each standing condition.
 ///
@@ -351,10 +366,12 @@ fn quits(code: KeyCode, modifiers: KeyModifiers) -> bool {
 // ---------------------------------------------------------------------------
 
 /// One row of the file list.
-struct Entry {
-    label: String,
-    path: PathBuf,
-    is_dir: bool,
+///
+/// Public, fields and all, so [`entries`] can be asserted on without a terminal.
+pub struct Entry {
+    pub label: String,
+    pub path: PathBuf,
+    pub is_dir: bool,
 }
 
 /// Where we are, what is highlighted, and what that decoded to.
@@ -367,6 +384,12 @@ struct Browser {
     reason: String,
     /// False when the terminal is not iTerm2, in which case nothing is decoded.
     previews: bool,
+    /// `a` turns the filter off. It persists across directory changes: one that
+    /// silently reset on entering a directory would need re-applying at exactly
+    /// the moment the user is looking for something.
+    all: bool,
+    /// How many entries the filter is holding back, for the footer.
+    hidden: usize,
 }
 
 impl Browser {
@@ -393,19 +416,44 @@ impl Browser {
             }
         };
 
-        let entries = read_dir(&dir)?;
-        let index = index_of(&entries, selected.as_deref());
+        let all = false;
+        let listing = entries(&dir, all)?;
+        let hidden = hidden_count(&dir, &listing, all);
+        let index = index_of(&listing, selected.as_deref());
 
         let mut browser = Self {
             dir,
-            entries,
+            entries: listing,
             list: ListState::default().with_selected(Some(index)),
             preview: None,
             reason: String::new(),
             previews,
+            all,
+            hidden,
         };
         browser.reload_preview();
         Ok(browser)
+    }
+
+    /// Turn the filter off or back on, keeping the highlight on the same file.
+    ///
+    /// **By name, never by index.** Toggling changes how many rows precede the
+    /// highlighted one, so a kept index lands on a different file — silently, in
+    /// a UI whose whole job is to say which file you are looking at.
+    fn toggle_all(&mut self) {
+        let focus = self
+            .selected()
+            .and_then(|e| e.path.file_name().map(OsStr::to_os_string));
+        self.all = !self.all;
+        let Ok(listing) = entries(&self.dir, self.all) else {
+            self.all = !self.all;
+            return;
+        };
+        self.hidden = hidden_count(&self.dir, &listing, self.all);
+        let index = index_of(&listing, focus.as_deref());
+        self.entries = listing;
+        self.list.select(Some(index));
+        self.reload_preview();
     }
 
     fn selected(&self) -> Option<&Entry> {
@@ -477,6 +525,7 @@ impl Browser {
             }
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.descend(),
             KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => self.ascend(),
+            KeyCode::Char('a') => self.toggle_all(),
             _ => {}
         }
     }
@@ -505,15 +554,16 @@ impl Browser {
     /// A directory that cannot be read leaves the browser where it is and says
     /// so, for the same reason an undecodable file does.
     fn enter(&mut self, dir: &Path, focus: Option<std::ffi::OsString>) {
-        match read_dir(dir) {
+        match entries(dir, self.all) {
             Err(err) => {
                 self.preview = None;
                 self.reason = err.to_string();
             }
-            Ok(entries) => {
-                let index = index_of(&entries, focus.as_deref());
+            Ok(listing) => {
+                let index = index_of(&listing, focus.as_deref());
+                self.hidden = hidden_count(dir, &listing, self.all);
                 self.dir = dir.to_path_buf();
-                self.entries = entries;
+                self.entries = listing;
                 self.list.select(Some(index));
                 self.reload_preview();
             }
@@ -552,7 +602,7 @@ impl Browser {
         let [status_area, image_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
         frame.render_widget(Paragraph::new(status), status_area);
-        frame.render_widget(Paragraph::new(KEYS), footer);
+        frame.render_widget(Paragraph::new(keys(self.all, self.hidden)), footer);
 
         image_area
     }
@@ -560,34 +610,73 @@ impl Browser {
 
 /// The rows of `dir`: the directories first, then the files, each by name.
 ///
+/// With `all` false, files are kept only when [`crate::load::previewable`]
+/// accepts their first [`crate::load::SVG_SNIFF_LIMIT`] bytes — **by content,
+/// never by extension**. That costs an open and a short read per entry, and it
+/// is the only rule consistent with what `tests/gate.rs` has asserted since
+/// Phase 1: a PNG named `.txt` is a PNG. Filtering on the extension would hide
+/// exactly that file while `load` still drew it, leaving the list disagreeing
+/// with the loader. Directories are never filtered — they are how you leave.
+///
+/// An entry that cannot be read is not previewable, and so is hidden rather than
+/// raised: a browser lands on unreadable files, and its job is to keep browsing.
+///
 /// `..` is not synthesised — [`Browser::ascend`] is the way up, and a fake row
 /// that is not a real entry would have to be special-cased in every place an
 /// entry is used.
-fn read_dir(dir: &Path) -> Result<Vec<Entry>, TikrayError> {
-    let mut entries: Vec<Entry> = std::fs::read_dir(dir)
+pub fn entries(dir: &Path, all: bool) -> Result<Vec<Entry>, TikrayError> {
+    let mut listing: Vec<Entry> = std::fs::read_dir(dir)
         .map_err(|e| TikrayError::io(dir, e))?
         .filter_map(Result::ok)
-        .map(|entry| {
+        .filter_map(|entry| {
             let path = entry.path();
             let is_dir = path.is_dir();
+            if !is_dir && !all && !previewable_file(&path) {
+                return None;
+            }
             let mut label = entry.file_name().to_string_lossy().into_owned();
             if is_dir {
                 label.push('/');
             }
-            Entry {
+            Some(Entry {
                 label,
                 path,
                 is_dir,
-            }
+            })
         })
         .collect();
 
-    entries.sort_by(|a, b| {
+    listing.sort_by(|a, b| {
         b.is_dir
             .cmp(&a.is_dir)
             .then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase()))
     });
-    Ok(entries)
+    Ok(listing)
+}
+
+/// Sniff one file's head, reading no more than the SVG rule can look through.
+fn previewable_file(path: &Path) -> bool {
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut head = vec![0u8; crate::load::SVG_SNIFF_LIMIT];
+    match std::io::Read::read(&mut file, &mut head) {
+        Ok(n) => crate::load::previewable(&head[..n]),
+        Err(_) => false,
+    }
+}
+
+/// How many rows the filter is holding back, for the footer.
+///
+/// Counted by relisting rather than tracked, because the alternative is a number
+/// that drifts from what is on screen the moment anything else changes.
+fn hidden_count(dir: &Path, shown: &[Entry], all: bool) -> usize {
+    if all {
+        return 0;
+    }
+    entries(dir, true)
+        .map(|full| full.len().saturating_sub(shown.len()))
+        .unwrap_or(0)
 }
 
 /// Where `name` sits in `entries`, or the first row when it is gone.

@@ -31,7 +31,7 @@ phases:
     by: null
   - name: "Phase 5 — convert from inside the TUI"
     reviewed: 2026-08-18
-    shipped: null
+    shipped: 2026-08-18
     cut: null
     by: null
   - name: "Phase 6 — the bare path draws inline, and the preview sits in the middle"

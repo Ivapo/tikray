@@ -53,18 +53,19 @@ clear.
   (Kitty graphics protocol, Sixel, ASCII-art fallback) is a much bigger
   undertaking and out of scope for now
 
-## Rough scope (not yet started)
+## Rough scope (all built)
 
-- [ ] Decode PNG/JPEG via `image`, rasterize SVG via `resvg`
-- [ ] Display decoded image inline via iTerm2 OSC 1337 protocol
-- [ ] Export/save any input format to PNG or JPEG
+- [x] Decode PNG/JPEG via `image`, rasterize SVG via `resvg`
+- [x] Display decoded image inline via iTerm2 OSC 1337 protocol
+- [x] Export/save any input format to PNG or JPEG
 - [x] TUI shell (Ratatui) for browsing/opening files, not just a one-shot CLI
-- [ ] CLI mode for scripting (`tikray view file.svg`, `tikray convert file.svg file.png`)
+- [x] CLI mode for scripting (`tikray view file.svg`, `tikray convert file.svg file.png`)
 
 ## Status
 
-Phases 1-4 of `tkr-001` built: `tikray view` draws PNG, JPEG and SVG inline in
-iTerm2, `tikray convert` writes any of them back out as PNG or JPEG, and a bare
-`tikray` browses files with a live preview. Phase 5 — converting from inside
-the browser — is specced and not built.
+**All seven phases of `tkr-001` are built.** `tikray <file>` draws PNG, JPEG and
+SVG inline in iTerm2, `tikray convert` writes any of them back out as PNG or
+JPEG, and a bare `tikray` browses files with a live preview and converts from
+there. Both jobs the idea above names are done, and the seed's "any of the
+others" narrowed once: SVG is input-only.
 Per-phase state lives in `specs/INDEX.md`; current behaviour lives in `rules/`.

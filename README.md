@@ -7,10 +7,11 @@ into a different format (ImageMagick).
 **Tikray** is Quechua for *to turn over / to translate* — it already spans both
 meanings.
 
-> **Status: Phases 1–4 and 6.** `tikray <file>` draws a PNG, JPEG or SVG inline
-> in iTerm2, `tikray convert` writes any of them back out as PNG or JPEG, and a
-> bare `tikray` opens a file browser that previews what you land on. Converting
-> from inside the browser is Phase 5 — see [`specs/INDEX.md`](specs/INDEX.md).
+> **Status: complete.** All seven phases of `tkr-001` are built.
+> `tikray <file>` draws a PNG, JPEG or SVG inline in iTerm2, `tikray convert`
+> writes any of them back out as PNG or JPEG, and a bare `tikray` opens a file
+> browser that previews what you land on and converts from there — see
+> [`specs/INDEX.md`](specs/INDEX.md).
 
 ## Install
 

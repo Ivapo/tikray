@@ -7,7 +7,7 @@ into a different format (ImageMagick).
 **Tikray** is Quechua for *to turn over / to translate* — it already spans both
 meanings.
 
-> **Status: complete.** All seven phases of `tkr-001` are built.
+> **Status: complete.** All ten phases of `tkr-001` are built.
 > `tikray <file>` draws a PNG, JPEG or SVG inline in iTerm2, `tikray convert`
 > writes any of them back out as PNG or JPEG, and a bare `tikray` opens a file
 > browser that previews what you land on and converts from there — see
@@ -139,11 +139,12 @@ Writing over an existing file refuses and asks: press the same key again to
 replace it. Converting a file onto itself is refused outright — it would
 re-encode it over itself and change nothing.
 
-**The list shows what tikray can draw** — images and directories — and the footer
-says how many entries are hidden. `a` shows everything and `a` again puts the
-filter back; the setting follows you into subdirectories. What counts as an image
-is decided by **reading each file**, not by its extension, so a PNG named `.txt`
-is listed as the PNG it is.
+**The list shows what tikray can draw**, and hides what your shell hides — images and directories — and the footer
+says how many entries are hidden. `.` shows everything and `.` again puts the
+filter back; the setting follows you into subdirectories. Hidden entries — the
+dot-prefixed ones — are held back by the same key, directories included. What
+counts as an image is decided by **reading each file**, not by its extension, so
+a PNG named `.txt` is listed as the PNG it is.
 
 **The preview is not a widget** — it is an image drawn behind a hole in the
 layout, which is why the pane is deliberately empty and why the rest of the
@@ -212,7 +213,8 @@ asserted, so it is a script instead of a test.
 
 ```sh
 bash scripts/gate8.sh          # Phase 3's item 8 — needs iTerm2, asks you questions
-bash scripts/gate-phase4.sh    # Phases 4 and 6's human items — same
+bash scripts/gate-phase4.sh    # the human items for Phases 4-8 and 10
+bash scripts/gate-phase9.sh    # Phase 9's, and it needs no terminal
 ```
 
 ## License

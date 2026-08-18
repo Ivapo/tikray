@@ -88,7 +88,7 @@ check_stty() {
 # Preflight
 # ---------------------------------------------------------------------------
 
-bold "tkr-001 Phases 4-8 — the human gate items"
+bold "tkr-001 Phases 4-8 and 10 — the human gate items"
 echo
 
 if [ "${TERM_PROGRAM:-}" != "iTerm.app" ] && [ "${LC_TERMINAL:-}" != "iTerm2" ]; then
@@ -117,8 +117,8 @@ dim "   Opening the repo's samples/ directory so there is something to look at."
 echo
 dim "   While you are in there, please do all four:"
 dim "     · arrow up and down — each highlighted image redraws in the right pane"
-dim "     · press 'a' — everything appears, including README.md"
-dim "     · press 'a' again — back to images only, same file still highlighted"
+dim "     · press '.' — everything appears: README.md, and any dot-entries"
+dim "     · press '.' again — back to filtered, same file still highlighted"
 dim "     · RESIZE THE WINDOW, a few times, with an image showing"
 dim "     · press q to quit"
 echo
@@ -141,8 +141,8 @@ dim "   Phase 7 added the list filter, so README.md is no longer listed at all �
 dim "   which is why the question above about a non-image is gone. Check the"
 dim "   filter instead: samples/ holds one README.md and one .gitignore-ish"
 dim "   file or two that are not images."
-ask "Were ONLY images and directories listed, with a hidden count in the footer?"
-ask "Did 'a' show everything, and 'a' again put the filter back?"
+ask "Were ONLY visible images and directories listed, with a hidden count?"
+ask "Did '.' show everything, and '.' again put the filter back?"
 ask "After toggling, was the SAME file still highlighted?"
 
 # ---------------------------------------------------------------------------
@@ -287,11 +287,43 @@ open "$CONV" 2>/dev/null
 ask "Do the written files open in Preview and look right?"
 
 # ---------------------------------------------------------------------------
+# Phase 10 — dot-entries, and the one check that its exemption was wired in
+# ---------------------------------------------------------------------------
+
+echo
+bold "8. hidden entries, and --browse on one"
+dim "   First your home directory, which is the case that prompted the phase:"
+dim "   47 dot-entries against 14 visible, and they sort FIRST."
+dim "   Press '.' to reveal, '.' again to hide, then q."
+pause "ready"
+snapshot
+( cd "$HOME" && "$TIKRAY" )
+echo
+check_stty
+ask "Did ~ open with NO dot-entries — no .cache/, .cargo/, .config/?"
+ask "Did '.' reveal them and '.' hide them again?"
+
+echo
+dim "   Now the one thing no test can check: --browse on a HIDDEN file must"
+dim "   highlight it. entries_with can be shipped and never called, and every"
+dim "   machine assertion still passes -- this is the only place that shows."
+HID="${TMPDIR:-/tmp}/tikray-gate10"; rm -rf "$HID"; mkdir -p "$HID"
+cp "$REPO/samples/landscape.png" "$HID/.hidden-pic.png" 2>/dev/null
+dim "   Running: tikray --browse $HID/.hidden-pic.png    (q to quit)"
+pause "ready"
+snapshot
+"$TIKRAY" --browse "$HID/.hidden-pic.png"
+echo
+check_stty
+ask "Was .hidden-pic.png HIGHLIGHTED, not just the directory opened?"
+ask "And a directory whose contents are all hidden — did it say how many?"
+
+# ---------------------------------------------------------------------------
 # Item 7a — Ctrl-C, which raw mode makes a keypress
 # ---------------------------------------------------------------------------
 
 echo
-bold "8. Ctrl-C inside the TUI — a KeyEvent, not a signal"
+bold "9. Ctrl-C inside the TUI — a KeyEvent, not a signal"
 dim "   crossterm's raw mode goes through cfmakeraw, which clears ISIG, so the"
 dim "   terminal never turns Ctrl-C into SIGINT here. tikray handles it as quit."
 echo
@@ -309,7 +341,7 @@ ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "9. kill -INT — the other mechanism entirely"
+bold "10. kill -INT — the other mechanism entirely"
 dim "   A real signal default-terminates without unwinding, so no Drop runs and"
 dim "   nothing would restore the terminal. signal-hook is pinned for this one"
 dim "   case, and turns it into the loop's other exit."

@@ -12,7 +12,7 @@ covers: >
   the pane says about it, the three zoom levels and why they crop, and the two
   interruptions that need different code
 max_lines: 230
-generated: 2026-08-17
+generated: 2026-08-18
 ---
 
 # TUI
@@ -61,10 +61,19 @@ calls that zero and centres it a row low.
 
 ## What the list shows
 
-`src/tui.rs:entries` lists directories first, then files, each by name. Files are
-kept only when `src/load.rs:previewable` accepts their first
-`src/load.rs:SVG_SNIFF_LIMIT` bytes — **by content, never by extension**, which
-costs an open and a 1024-byte read per entry per directory change.
+`src/tui.rs:entries` lists directories first, then files, each by name, and
+filters on **two** rules. Anything whose name begins with `.` is hidden,
+directories included — Phase 7 exempted directories from the *other* filter
+because hiding one stops you descending into it, and that reason does not carry
+here, since leaving is `←` rather than a row. Files must also pass
+`src/load.rs:previewable` on their first `src/load.rs:SVG_SNIFF_LIMIT` bytes —
+**by content, never by extension** — which costs an open and a short read per
+entry per directory change.
+
+`src/tui.rs:entries_with` exempts one entry by name: the path a person put on the
+command line is listed even when the filter would hide it, because naming a path
+is a request and a listing is a heuristic. One entry, one directory, at startup —
+`src/tui.rs:Browser::toggle_all` relists without it.
 
 Extension filtering is refused for a reason a gate holds: `tests/gate.rs` has
 asserted since Phase 1 that a PNG named `.txt` loads, so an extension filter
@@ -79,7 +88,7 @@ refusal arrives after the choice. It is still only a byte rule: an SVG `usvg`
 rejects is listed and then fails to parse, which is §2.10's final-arbiter rule
 seen from this side.
 
-`a` toggles the filter off, the count of held-back rows sits in the footer beside
+`.` toggles the filter off, the count of held-back rows sits in the footer beside
 that key — not in the list's border title, which `src/tui.rs:compact` already
 shows is too tight to trust — and the toggle **persists across directory
 changes**, since one that reset on entering a directory would need re-applying at

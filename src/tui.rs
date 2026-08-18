@@ -52,10 +52,13 @@ const POLL: Duration = Duration::from_millis(100);
 /// `$HOME` rewritten to `~`, and ratatui truncates — so the count would vanish on
 /// exactly the narrow window where it matters. The footer spans the window.
 fn keys(all: bool, hidden: usize, zoom: u32) -> String {
+    // Three states. Off, the key re-hides both kinds, so "images only" would be
+    // half the story; on with nothing hidden, a key advertising a filter that
+    // holds nothing back is noise and the listing is its own evidence.
     let filter = if all {
-        "  a images only".to_string()
+        "  . filtered".to_string()
     } else if hidden > 0 {
-        format!("  a all ({hidden} hidden)")
+        format!("  . all ({hidden} hidden)")
     } else {
         String::new()
     };
@@ -558,9 +561,10 @@ struct Browser {
     reason: String,
     /// False when the terminal is not iTerm2, in which case nothing is decoded.
     previews: bool,
-    /// `a` turns the filter off. It persists across directory changes: one that
-    /// silently reset on entering a directory would need re-applying at exactly
-    /// the moment the user is looking for something.
+    /// `.` turns the filter off — both halves of it, dot-entries and non-images
+    /// alike. It persists across directory changes: one that silently reset on
+    /// entering a directory would need re-applying at exactly the moment the
+    /// user is looking for something.
     all: bool,
     /// How many entries the filter is holding back, for the footer.
     hidden: usize,
@@ -601,7 +605,8 @@ impl Browser {
         };
 
         let all = false;
-        let listing = entries(&dir, all)?;
+        // The named entry is exempted from the filter: see `entries_with`.
+        let listing = entries_with(&dir, all, selected.as_deref())?;
         let hidden = hidden_count(&dir, &listing, all);
         let index = index_of(&listing, selected.as_deref());
 
@@ -638,6 +643,20 @@ impl Browser {
         };
         self.hidden = hidden_count(&self.dir, &listing, self.all);
         let index = index_of(&listing, focus.as_deref());
+
+        // Phase 8's invariant is that the zoom resets when the highlighted entry
+        // changes and only then. Toggling moved the highlight rarely before —
+        // only off a non-previewable file — and moves it on every dot-entry now,
+        // so the comparison has to be made rather than assumed.
+        let moved = listing
+            .get(index)
+            .and_then(|e| e.path.file_name().map(OsStr::to_os_string))
+            != focus;
+        if moved {
+            self.zoom = 0;
+            self.result = None;
+        }
+
         self.entries = listing;
         self.list.select(Some(index));
         self.reload_preview();
@@ -655,6 +674,14 @@ impl Browser {
     fn reload_preview(&mut self) {
         self.preview = None;
         self.reason = match self.selected() {
+            // "empty" would be false for a directory that is merely filtered,
+            // which this phase makes an ordinary state rather than a corner.
+            None if self.hidden > 0 => {
+                format!(
+                    "nothing to show — {} hidden, press . to reveal",
+                    self.hidden
+                )
+            }
             None => "empty directory".to_string(),
             Some(entry) if entry.is_dir => "directory".to_string(),
             Some(entry) => {
@@ -737,7 +764,7 @@ impl Browser {
             }
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.descend(),
             KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => self.ascend(),
-            KeyCode::Char('a') => self.toggle_all(),
+            KeyCode::Char('.') => self.toggle_all(),
             // Uppercase because `j` is Down and `g`/`G` are Home/End. The shift
             // also suits a key that writes to disk.
             KeyCode::Char('P') => self.convert(Output::Png),
@@ -900,7 +927,9 @@ impl Browser {
 /// is the only rule consistent with what `tests/gate.rs` has asserted since
 /// Phase 1: a PNG named `.txt` is a PNG. Filtering on the extension would hide
 /// exactly that file while `load` still drew it, leaving the list disagreeing
-/// with the loader. Directories are never filtered — they are how you leave.
+/// with the loader. Directories are filtered only by the dot rule: Phase 7 exempted
+/// them from *previewability* because hiding one stops you descending into it,
+/// and that reason does not carry to a leading `.` — leaving is `←`, not a row.
 ///
 /// An entry that cannot be read is not previewable, and so is hidden rather than
 /// raised: a browser lands on unreadable files, and its job is to keep browsing.
@@ -909,14 +938,44 @@ impl Browser {
 /// that is not a real entry would have to be special-cased in every place an
 /// entry is used.
 pub fn entries(dir: &Path, all: bool) -> Result<Vec<Entry>, TikrayError> {
+    entries_with(dir, all, None)
+}
+
+/// [`entries`], with one entry exempted from the filter.
+///
+/// `keep` is the name a person put on the command line, and it is listed even
+/// when the filter would hide it — **naming a path is a request, a listing is a
+/// heuristic**, the principle that also makes `./view` the escape hatch for a
+/// file called `view`. Without it `tikray --browse <a hidden file>` opens the
+/// right directory and highlights the wrong row, because
+/// [`Browser::open`] lists before [`index_of`] looks.
+///
+/// One entry, one directory, at startup. Navigating away drops it, and so does a
+/// `.` round trip — [`Browser::toggle_all`] relists without it. The filter's
+/// *state* is untouched, which is why this beats starting with the filter off.
+pub fn entries_with(
+    dir: &Path,
+    all: bool,
+    keep: Option<&OsStr>,
+) -> Result<Vec<Entry>, TikrayError> {
     let mut listing: Vec<Entry> = std::fs::read_dir(dir)
         .map_err(|e| TikrayError::io(dir, e))?
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let path = entry.path();
             let is_dir = path.is_dir();
-            if !is_dir && !all && !previewable_file(&path) {
-                return None;
+            let named = keep.is_some_and(|k| entry.file_name() == k);
+            if !all && !named {
+                // Dot-entries go, directories included. Phase 7 exempted
+                // directories from the *previewability* filter because hiding
+                // one stops you descending into it; that reason does not carry
+                // here, since leaving is `←` rather than a row.
+                if entry.file_name().as_encoded_bytes().starts_with(b".") {
+                    return None;
+                }
+                if !is_dir && !previewable_file(&path) {
+                    return None;
+                }
             }
             let mut label = entry.file_name().to_string_lossy().into_owned();
             if is_dir {

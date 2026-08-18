@@ -26,7 +26,7 @@ phases:
     by: null
   - name: "Phase 4 — the TUI shell over the same core"
     reviewed: 2026-08-17
-    shipped: null
+    shipped: 2026-08-17
     cut: null
     by: null
   - name: "Phase 5 — convert from inside the TUI"

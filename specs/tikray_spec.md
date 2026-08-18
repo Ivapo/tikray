@@ -399,9 +399,10 @@ rather than dismissing it**: `view` keeps the flags. `--force` lives there and
 nowhere else, so the subcommand is the form that takes options and the bare form
 is the zero-ceremony one — a real division of labour rather than a synonym.
 
-What the reversal costs is named in Phase 6, because §1 judges this project by
-what a user sees: the affordance Phase 4 shipped — *browse, starting at this
-file* — has no spelling left.
+What the reversal would have cost is spelled `--browse` instead, because §1
+judges this project by what a user sees and the affordance Phase 4 shipped —
+*browse, starting at this file* — is one a person had already used. Phase 6
+keeps it rather than recording it as a loss.
 
 ### 2.10 SVG is not an `ImageFormat`, so detection grows a type *(decision, recorded — resolves Phase 2's round-1 blocker)*
 
@@ -1283,15 +1284,18 @@ independent, so the gate keeps them separate.
   | `tikray` | browser, in the working directory | no |
   | `tikray <dir>` | browser, in that directory | no |
   | `tikray <file>` | **inline, one-shot** | **yes — was the browser** |
+  | `tikray --browse <file>` | **browser, that file highlighted** | **new spelling of Phase 4's behaviour** |
   | `tikray view [--force] <path>` | inline, one-shot | no |
   | `tikray convert …` | writes a file | no |
 
-  **`src/cli.rs` does not change, and that is the finding that sizes this
-  half.** Phase 4's tree already parses a bare path into `Cli::path`; only
-  `src/main.rs:run`'s dispatch of that value changes, from "always the browser"
-  to "stat it, then choose". So **Phase 4's gate item 3 stays true unmodified** —
-  all five of its parse cases, including `./view` — because parsing is not what
-  this changes.
+  **`src/cli.rs` gains one `bool` field and nothing else**, which is the finding
+  that sizes this half. Phase 4's tree already parses a bare path into
+  `Cli::path`; what changes is `src/main.rs:run`'s dispatch of that value, from
+  "always the browser" to "stat it, then choose". So **Phase 4's gate item 3
+  stays true unmodified** — all five of its parse cases, including `./view` —
+  because those assertions read `command` and `path`, and a new flag beside them
+  changes neither. That is the item to watch, not a formality: parsing is not
+  what this phase changes, and if item 3 goes red the two have been conflated.
 
   Three things an implementer cannot guess, settled here:
 
@@ -1301,25 +1305,31 @@ independent, so the gate keeps them separate.
      step earlier. A path that is neither file nor directory (a socket, a fifo)
      takes the **file** branch and is refused by `load` as an undetermined
      format, because that is the branch with a message about what the bytes are.
-  2. **The bare form takes no flags; `view` is the form that does.** `--force`
-     stays on `view` alone. This is the answer to §2.9's "view becomes pure
-     noise", and it is a real division of labour rather than a rescue: the
-     subcommand is where options live, the bare form is the zero-ceremony one.
-     A user who needs `--force` writes `view`, which is also the invocation whose
-     name says what it will do.
-  3. **What is lost is named rather than discovered.** Phase 4 shipped *browse,
-     starting at this file* and this phase deletes it with no replacement
-     spelling. `tikray <dir>` reaches the directory but not the highlight. A
-     `--browse` flag or a key that jumps to a name would restore it; neither is
-     taken here, and the loss is recorded so a later phase weighs it against use
-     rather than against the memory of having had it.
+  2. **`--browse` selects a surface; `--force` modifies one. That is why they
+     sit on different invocations**, and it is the answer to §2.9's "`view`
+     becomes pure noise" — an objection this phase has to answer rather than
+     dismiss, since it was the strong half of the argument being reversed.
+     `--force` changes *how the inline draw behaves* (§2.7's detection bypass),
+     so it belongs to the invocation that draws inline and stays on `view`
+     alone. `--browse` chooses *which surface runs at all*, which is the one
+     thing the bare form has to be able to say now that its meaning depends on
+     what the path turns out to be. So `view` still owns the options, and the
+     bare form owns exactly one surface selector.
+  3. **`--browse` overrides the stat rather than consulting it.** With a
+     directory it is a no-op, and with a missing path it still fails at the stat
+     — the browser needs a directory to list either way. Given a file it opens
+     that file's directory with the file highlighted, which is Phase 4's
+     decision 2 preserved verbatim rather than reimplemented. Given no path at
+     all it is the bare `tikray`, not an error: a flag that selects the default
+     surface has nothing to complain about.
 
 - **Scope, part 2 — the image is centred in its pane.**
 
   | File | Entry points |
   |---|---|
   | `src/tui.rs` | `+ pub fn centre_offset(image: (u32,u32), pane: (u16,u16), cell: (u32,u32)) -> (u16,u16)` — the offset in **cells**, pure |
-  | `src/main.rs` | the type-dispatch above, in `run` |
+  | `src/cli.rs` | `+ browse: bool` on `Cli`, part 1's surface selector |
+  | `src/main.rs` | part 1's type-dispatch, in `run` |
 
   **`src/tui.rs:pane_sequence`'s signature does not change**, deliberately:
   Phase 4's gate item 5 asserts on it, and a phase that edits a shipped gate to
@@ -1344,9 +1354,9 @@ independent, so the gate keeps them separate.
   centred rectangle: what has to be erased is wherever the *previous* image was,
   and after this change that is no longer the pane's corner.
 
-- **Exit gate:** three items runnable by `cargo test` with no terminal, and one a
-  human checks. The blast radius is one dispatch arm and one offset, so the
-  regression item is the whole suite rather than a reading of it.
+- **Exit gate:** four items runnable by `cargo test` with no terminal, and one a
+  human checks. The blast radius is one dispatch arm, one flag and one offset, so
+  the regression item is the whole suite rather than a reading of it.
 
   1. **`centre_offset` reproduces part 2's arithmetic.** In a 40×20-cell pane at
      16×36: a 640×427 image → `(0, 4)` — it fills the width, and 427px is 12 rows
@@ -1359,30 +1369,40 @@ independent, so the gate keeps them separate.
      footprint is 13 rows and the free space 7, whose half is 3 — the floor would
      say 12 rows, 8 free, offset 4, and put the image's last row past the pane.
      One assertion, and it is the whole reason the rounding is named.
-  3. **Phases 1–4's gates still pass, unmodified.** All 52 assertions — 16, 11,
+  3. **`--browse` parses, and parses beside everything Phase 4 pinned.**
+     `["tikray", "--browse", "a.png"]` → `browse` set with the path, no
+     subcommand; `["tikray", "--browse"]` → `browse` set with no path, which is
+     decision 3's "the bare `tikray`, not an error"; and
+     `["tikray", "view", "--browse", "a.png"]` → **an error**, since `--browse`
+     is not `view`'s flag and a surface selector on the invocation that already
+     names its surface means nothing.
+  4. **Phases 1–4's gates still pass, unmodified.** All 52 assertions — 16, 11,
      12 and 13 — green with no edits to any of the four files. **Item 3 of
      Phase 4's gate is the load-bearing one**: it asserts what `["tikray",
      "a.png"]` *parses* to, this phase changes what that value *dispatches* to,
      and the two must not be confused. If this item cannot pass, the parse and
      the dispatch have been conflated.
-  4. **Human, in iTerm2:** `tikray <file>` draws the image inline and returns to
-     the prompt, `tikray <dir>` and bare `tikray` open the browser, and
-     `tikray view <file>` is unchanged. In the browser, **the image sits in the
-     middle of its pane — horizontally and vertically — and still does not cross
-     the border at any window size**, including while resizing. The border half
-     is Phase 4's item 6 restated, because this phase moves the very arithmetic
-     that item was protecting, and a centred image that spills is a worse
-     regression than an uncentred one.
+  5. **Human, in iTerm2:** `tikray <file>` draws the image inline and returns to
+     the prompt; `tikray <dir>` and bare `tikray` open the browser;
+     `tikray --browse <file>` opens the browser at that file's directory **with
+     the file highlighted**, which is the assertion that the restored affordance
+     is the same one and not a near miss; `tikray view <file>` is unchanged. In
+     the browser, **the image sits in the middle of its pane — horizontally and
+     vertically — and still does not cross the border at any window size**,
+     including while resizing. The border half is Phase 4's item 6 restated,
+     because this phase moves the very arithmetic that item was protecting, and
+     a centred image that spills is a worse regression than an uncentred one.
 
   Tests land in `tests/gate_phase6.rs`; the four existing gate files are not
-  edited, which is item 3. Item 4 extends `scripts/gate-phase4.sh` rather than
-  adding a script, since it is the same walk with two changed answers.
+  edited, which is item 4. Item 5 extends `scripts/gate-phase4.sh` rather than
+  adding a script, since it is the same walk with two changed answers and one
+  new invocation.
 
-- **Close-out:** updates `rules/tui.md` (the dispatch table, the centring
-  arithmetic — it sits at **74/75 lines**, so `max_lines` needs raising in the
-  same edit, and Phase 4's exit-gate record already flags it as the first thing
-  to trim). Updates `README.md`'s Usage block and its Browsing section, both of
-  which state the old grammar, and `rules/convert.md`'s note that `run`
+- **Close-out:** updates `rules/tui.md` (the dispatch table, `--browse`, the
+  centring arithmetic — it sits at **74/75 lines**, so `max_lines` needs raising
+  in the same edit, and Phase 4's exit-gate record already flags it as the first
+  thing to trim). Updates `README.md`'s Usage block and its Browsing section,
+  both of which state the old grammar, and `rules/convert.md`'s note that `run`
   dispatches three surfaces — it dispatches four now. **`CLAUDE.md` needs no
   change**; it names no invocation.
 

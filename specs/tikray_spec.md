@@ -30,7 +30,7 @@ phases:
     cut: null
     by: null
   - name: "Phase 5 — convert from inside the TUI"
-    reviewed: null
+    reviewed: 2026-08-18
     shipped: null
     cut: null
     by: null
@@ -1328,9 +1328,21 @@ and none is derivable from §1.
      **byte-for-byte unchanged** on refusal, and that property is restated here
      with no `--overwrite` flag to carry it: the first press writes nothing and
      says the file exists, the second writes. Nothing is touched unless asked
-     twice. The pending state is keyed to *(path, format)* and is cleared by any
-     other key, so a confirm cannot survive navigating away and land on a
-     different file.
+     twice.
+
+     **There are two pieces of transient state and they clear on different
+     rules**, which is worth separating because writing "cleared by the next
+     keypress" for both is the obvious shortcut and is wrong in one direction
+     each way. The **pending confirm** is keyed to *(path, format)* and is
+     cleared by **any key that is not the one that set it** — tight, because a
+     live confirm is a licence to overwrite. The **result line** is cleared when
+     **the highlighted entry changes** — looser, because a message about a file
+     you just wrote has to survive long enough to be read, and clearing it on any
+     keypress would mean it vanished on the arrow key the user pressed to go and
+     look at the file. Keying the confirm to *(path, format)* is belt-and-braces
+     under either rule: `src/tui.rs:index_of` re-selects by name, so even a
+     confirm that outlived its keypress still matches the file it was pressed
+     on.
   4. **Converting a file onto itself is refused by name**, `OutputIsSource`. It
      is reachable only here — a CLI user typing `convert a.png a.png` gets
      `OutputExists` first — and it is not the same mistake: pressing `P` on a
@@ -1352,6 +1364,13 @@ and none is derivable from §1.
      confirm would overwrite the source in place. So when the destination
      exists, the two are compared through `std::fs::canonicalize`; when it does
      not exist it cannot be the source, and no canonicalization is needed.
+
+     **Both sides must resolve for the answer to be "same file."** The idiomatic
+     one-liner — `canonicalize(dest).ok() == canonicalize(source).ok()` —
+     compares `None == None` as equal and would report `OutputIsSource` for two
+     paths that may be unrelated. It errs toward a refusal rather than a write,
+     so it is not dangerous, but it reports the wrong reason; a double failure is
+     a race and should fall through to the exists check, which refuses anyway.
   5. **`convert_to` loads from disk rather than reusing the preview buffer.**
      The buffer is right there and reusing it would be faster, but
      `Browser::preview` is `None` on a terminal that is not iTerm2 (Phase 4's
@@ -1360,6 +1379,20 @@ and none is derivable from §1.
      also means the bytes written come from the file on disk rather than from
      whatever is in memory, which is the property a person expects of a
      converter.
+  6. **The listing is refreshed after a successful write, and the result is set
+     *after* the refresh.** `P` on `photo.svg` creates `photo.png` in the
+     directory currently on screen, and a browser that does not show it until you
+     navigate away and back is reporting something the user can see is missing.
+     `src/tui.rs:entries` is already re-run on every directory change; this is
+     the same call on one more trigger, and it keeps `hidden` honest.
+
+     **The ordering is the whole of this decision.** The natural way to refresh
+     is `src/tui.rs:Browser::enter` on the current directory — but that is the
+     navigation path, and navigation is what clears the result line. An
+     implementer who refreshes that way destroys the message inside the very
+     keypress that produced it, and the pane says nothing about a file it just
+     wrote. So: **write, refresh, then set the result.** Human item 6 catches
+     this, but only after someone has built it the other way.
 
   **Where §2.13's notice goes — the decision this phase exists for.** The
   flattening line becomes a **result line in the pane**, in the status row that
@@ -1380,15 +1413,8 @@ and none is derivable from §1.
   therefore write a file and say nothing about it on the one surface where the
   user has no picture to confirm it by. So the order becomes: **a pending result
   first**, then the standing conditions, then the per-entry reason. The result is
-  cleared by the next navigation, which is also what clears decision 3's pending
-  confirm.
-
-  6. **The listing is refreshed after a successful write.** `P` on `photo.svg`
-     creates `photo.png` in the directory currently on screen, and a browser that
-     does not show it until you navigate away and back is reporting something the
-     user can see is missing. `src/tui.rs:entries` is already re-run on every
-     directory change; this is the same call on one more trigger, and it also
-     keeps `hidden` honest.
+  cleared when the highlighted entry changes, which is decision 3's rule for it —
+  a looser rule than the pending confirm's, and deliberately so.
 
 - **Exit gate:** five items runnable by `cargo test` with no terminal, and one a
   human checks. `convert_to` touches the filesystem but never the terminal, which

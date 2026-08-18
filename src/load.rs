@@ -87,9 +87,11 @@ fn looks_like_svg(head: &[u8]) -> bool {
 /// A check over [`Input`], not over `[ImageFormat; 2]` — which is what SVG
 /// joining the list costs, since `image::ImageFormat` cannot express it.
 ///
-/// With default features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP
-/// without being asked, so "unsupported format" is something Tikray decides
-/// rather than something that happens to it (§2.8).
+/// The build links `png` and `jpeg` only (Phase 9), but that is not what makes
+/// this list the allowlist — this list is. `image`'s signature table carries no
+/// `cfg`, so GIF, BMP, TIFF, ICO, QOI and WebP are still *recognised* and still
+/// refused **by name**; only their decoders are gone. Support is something
+/// Tikray decides rather than something that happens to it (§2.8).
 const ALLOWED: [Input; 3] = [
     Input::Raster(ImageFormat::Png),
     Input::Raster(ImageFormat::Jpeg),

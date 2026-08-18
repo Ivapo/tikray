@@ -14,7 +14,7 @@ covers: >
   the format matrix, the two callers over one core, and the error taxonomy the
   CLI renders to stderr
 max_lines: 115
-generated: 2026-08-17
+generated: 2026-08-18
 ---
 
 # Core pipeline
@@ -92,12 +92,13 @@ never a wrong render. `.svgz` opens `1f 8b`, fails the rule, and is not supporte
 `src/load.rs:previewable` is that same pairing exposed for callers who have bytes
 and no path — the browser's list filter — and it is the allowlist rather than
 `detect` alone precisely because the two differ by six formats.
-With default features `image` also decodes GIF, BMP, TIFF, ICO, QOI and WebP, so
-`src/load.rs:allowed` refuses a decodable-but-unallowed input by name
+The build links `png` and `jpeg` only (Phase 9), and `src/load.rs:allowed` still
+refuses GIF, BMP, TIFF, ICO, QOI and WebP by name
 (`src/error.rs:format_name` renders the detected format) rather than silently
-succeeding on a format no phase has gated. Sniffing is feature-independent —
-`image`'s `MAGIC_BYTES` table carries no `cfg` — so the detected name is right
-even for formats the build cannot decode.
+succeeding on a format no phase has gated. **Sniffing is feature-independent** — `image`'s `MAGIC_BYTES` is a 22-row static
+with no `cfg` and `extensions_str` has no gate — so the detected name is right
+for exactly the formats the build cannot decode. That was a footnote until
+Phase 9; it is now what makes those refusals work.
 
 ## Both output edges exist, and the matrix is not square
 

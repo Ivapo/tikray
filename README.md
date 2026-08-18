@@ -72,9 +72,11 @@ Input format is detected from the file's **contents**, not its extension: a PNG
 named `.txt` displays fine, and a text file named `.png` is refused as an
 undetermined format rather than as a corrupt image.
 
-Anything else `image` can decode — GIF, BMP, TIFF, WebP — is refused by name.
-That is deliberate: support is an explicit list, not whatever the dependencies
-happen to link in.
+Anything else that *looks* like an image — GIF, BMP, TIFF, WebP — is refused by
+name. That is deliberate: support is an explicit list, not whatever the
+dependencies happen to link in. The build links only PNG and JPEG decoders, and
+those formats are still named in the refusal because recognising a file and
+decoding it are different things.
 
 **SVG** is rasterized at its own natural size and then travels the same path as
 any other image, so everything below applies to it unchanged. Two limits worth

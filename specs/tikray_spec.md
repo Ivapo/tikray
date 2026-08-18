@@ -50,8 +50,8 @@ phases:
     cut: null
     by: null
   - name: "Phase 9 — link only the codecs tikray decodes"
-    reviewed: null
-    shipped: null
+    reviewed: 2026-08-18
+    shipped: 2026-08-18
     cut: null
     by: null
 
@@ -2248,8 +2248,10 @@ pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
   formats". Both files are declared `sources:` of the rules this phase repairs,
   so **`/sync-rules` would regenerate the stale claim straight back** — the exact
   hazard Phase 6 recorded when it put `src/cli.rs`'s module doc in scope and
-  named it in the close-out as well. Fixing the rule without fixing the comment
-  fixes nothing that lasts.
+  cross-referenced it from the close-out. This phase keeps them **in scope
+  only**: scope is imperative where a close-out table is a checklist, and both
+  carry their `file:symbol` here, so nothing is lost by not repeating them.
+  Fixing the rule without fixing the comment fixes nothing that lasts.
 
   Two decisions:
 
@@ -2325,8 +2327,9 @@ pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
 - **Close-out:** six artifacts. The first draft named three and marked one of the
   others safe, which is recorded because the miss has a shape: **every sentence
   in the corpus that describes what `image` *can* do, rather than what tikray
-  does, is falsified by this phase**, and they are scattered across rules, prose
-  and doc comments.
+  does, is falsified by this phase.** The table below is the rules and the prose;
+  the two doc comments carrying the same claim are in scope above, because they
+  have to be edited rather than merely checked.
 
   | Artifact | The sentence, and why it changes |
   |---|---|
@@ -2337,7 +2340,17 @@ pnm, qoi, tga, tiff, webp — plus `rayon`. Tikray decodes two and encodes two.
   | `samples/README.md` | "a format tikray *can* technically write but has not gated is refused by name", beside `tikray convert samples/landscape.png out.gif`. The command's output is unchanged, since `src/convert.rs:resolve` refuses before any encoder is consulted; the word "technically" is what goes |
   | `tikray.md` | the status line, and Tech stack's "`image` crate — handles PNG/JPEG (and other formats like WebP/GIF/BMP for free)" |
 
-  **`CLAUDE.md` needs no change** — it names no dependency and no format.
+  **`CLAUDE.md` needs no change**, and the reason first written for that was
+  false: it said the file "names no dependency and no format", when its opening
+  stanza names `image`, `resvg`/`usvg`, Ratatui and crossterm alongside PNG,
+  JPEG and SVG. The verdict survives on **this phase's own generalisation** —
+  those sentences describe what *tikray* does and what it is built from, not
+  what `image` *can* do — which is the test the whole close-out is sorted by.
+  Recorded rather than quietly swapped, because it is the second no-change
+  adjudication in this phase whose stated reason did not survive checking (the
+  first was `README.md`, marked "stays true" in the original draft), and a
+  verdict that happens to be right for a reason that is wrong is worth one line
+  of warning to whoever sorts the next corpus this way.
 
   `src/load.rs:previewable`'s doc and `rules/tui.md`'s copy of it both **stay
   true**: they are about `detect` admitting six formats the allowlist then

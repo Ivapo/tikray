@@ -9,7 +9,7 @@ covers: >
   the two channels that announce it, and the order run takes its two cheap
   refusals in
 max_lines: 75
-generated: 2026-08-17
+generated: 2026-08-18
 ---
 
 # Convert
@@ -26,10 +26,11 @@ and why the stderr note below is emitted by `src/main.rs:run` instead.
 
 `src/convert.rs:Output` is `Png | Jpeg`. A two-variant enum cannot name a format
 no phase has gated, so the per-phase allowlist obligation is discharged
-structurally rather than in prose. It earns the type because the encode edge is
-*wider* than the decode edge: an RGBA8 buffer encodes cleanly to nine formats
-(PNG, JPEG, GIF, WebP, BMP, TIFF, ICO, QOI, TGA), so "whatever `image` will
-write" is not two.
+structurally rather than in prose. It earned the type because the encode edge was
+*wider* than the decode edge: an RGBA8 buffer encoded cleanly to nine formats
+(PNG, JPEG, GIF, WebP, BMP, TIFF, ICO, QOI, TGA). **Phase 9 made it two**, by
+linking `png` and `jpeg` alone — which vindicates the enum rather than retiring
+it: it is why narrowing the dependency changed no behaviour.
 
 `src/convert.rs:resolve` reads `--format` when given, else the destination's
 extension, both lowercased. **Not `ImageFormat::from_path`**, whose refusal for

@@ -36,8 +36,9 @@ clear.
 
 - **Language:** Rust
 - **TUI framework:** [Ratatui](https://ratatui.rs/) + `crossterm`
-- **Raster decode/encode:** `image` crate — handles PNG/JPEG (and other
-  formats like WebP/GIF/BMP for free) without writing codecs by hand
+- **Raster decode/encode:** `image` crate — PNG and JPEG, which are the two
+  tikray supports. Other formats are recognised and refused by name without
+  their decoders being linked (Phase 9)
 - **SVG rendering:** `resvg`/`usvg` (pure Rust, no C dependency) to
   rasterize SVG into a pixel buffer, which then goes through the same
   `image` crate encode path as any other format
@@ -63,7 +64,7 @@ clear.
 
 ## Status
 
-**All eight phases of `tkr-001` are built.** `tikray <file>` draws PNG, JPEG and
+**All nine phases of `tkr-001` are built.** `tikray <file>` draws PNG, JPEG and
 SVG inline in iTerm2, `tikray convert` writes any of them back out as PNG or
 JPEG, and a bare `tikray` browses files with a live preview and converts from
 there, with `+`/`-` to zoom a preview. Both jobs the idea above names are done,

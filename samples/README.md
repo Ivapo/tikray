@@ -58,5 +58,6 @@ tikray convert samples/landscape.png out.gif   # GIF is not a gated output
 ```
 
 Both name what went wrong. Support is an explicit list rather than whatever the
-dependencies happen to link in, so a format tikray *can* technically write but
-has not gated is refused by name instead of quietly working.
+dependencies happen to link in, so a format tikray has not
+gated is refused by name instead of quietly working — and since Phase 9 its
+decoder is not even linked, which changes nothing you can see here.

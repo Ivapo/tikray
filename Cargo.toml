@@ -6,10 +6,18 @@ description = "View and convert raster and vector images from the terminal, inli
 license = "MIT"
 
 [dependencies]
-# Default features are kept deliberately: tkr-001 §2.4/§2.8 build the design around
-# `image` decoding more than Tikray supports, with an explicit per-phase allowlist
-# deciding what is *supported* rather than what happens to link in.
-image = "0.25"
+# Only the two codecs tikray decodes, which is 1.1 MiB smaller than the fifteen
+# `default-formats` links (tkr-001 Phase 9).
+#
+# This does NOT weaken §2.8's "support is an explicit allowlist rather than
+# whatever the dependency links in" -- it makes it literally true.
+# `src/load.rs:ALLOWED` is what enforces support and always was; fifteen codecs
+# were the accident the allowlist was written to survive. A GIF is still refused
+# BY NAME here, because `image`'s MAGIC_BYTES table carries no `cfg` and
+# `ImageFormat::extensions_str` has no feature gate -- sniffing never needed the
+# codec. `rayon` goes too: it is a default feature and tikray parallelises
+# nothing.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # Pure Rust, so there is no C toolchain step and the binary stays one artifact —
 # the deciding reason over librsvg/Cairo (§2.4). `tiny-skia` is deliberately not
 # declared here: it arrives through `resvg`, and `src/svg.rs` reaches it as

@@ -23,10 +23,15 @@ use crate::error::TikrayError;
 /// **This type is the output allowlist.** §2.8 makes "support is an explicit
 /// allowlist, per phase" a standing obligation, and this discharges it
 /// structurally rather than in prose: a two-variant enum cannot name a format no
-/// phase has gated. That is worth doing because the encode edge is *wider* than
-/// the decode edge — an RGBA8 buffer encodes happily to PNG, JPEG, GIF, WebP,
-/// BMP, TIFF, ICO, QOI and TGA, so "whatever `image` will write" is nine
+/// phase has gated. That was worth doing because the encode edge was *wider* than
+/// the decode edge — an RGBA8 buffer encoded happily to PNG, JPEG, GIF, WebP,
+/// BMP, TIFF, ICO, QOI and TGA, so "whatever `image` will write" was nine
 /// formats, not two.
+///
+/// **Phase 9 made it two**, by linking `png` and `jpeg` alone. That does not
+/// retire this type, it vindicates it: the enum is *why* narrowing the
+/// dependency changed no behaviour, and relinking a codec would widen the edge
+/// again without touching what tikray supports.
 ///
 /// It exists for the same reason [`crate::load::Input`] does: `image` has no SVG
 /// variant, so `ImageFormat` cannot express the refusal Tikray needs to make.

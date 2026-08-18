@@ -2599,93 +2599,124 @@ others, on a distinction with no rule behind it.
   does* at a level this phase changes, and a banner naming no invocation and no
   binding does not.)
 
-### Phase 11 — cut the human gate down to what a machine cannot see
-*Produces the observable: no. §3 requires that argued rather than assumed, and
-the argument is that this phase protects the observable's **verification** rather
-than the observable: a human gate at 29 questions and 12 TUI launches is one
-nobody runs, and an unrun gate checks nothing. Every cut is a check that a
-machine assertion already makes.*
+### Phase 11 — audit the human gate in both directions
+*Produces the observable: no. §3 wants that argued: this phase protects the
+observable's **verification**. A gate at 29 questions is one nobody runs, and an
+unrun gate checks nothing — but a shorter gate that stopped checking something is
+worse than a long one, so the audit runs **both ways** and adds three checks
+while removing three.*
 
-**Appended 2026-08-18, prompted by asking whether the script had grown too big.**
+**Appended 2026-08-18, from asking whether the script had grown too big.**
 Measured: `scripts/gate-phase4.sh` is **385 lines, 10 sections, 29 questions and
-12 TUI launches** — fifteen to twenty minutes of a person's attention, accreted
-one phase at a time with nothing ever removed.
+12 launches** (9 of them TUI sessions; three are inline draws). It accreted one
+phase at a time with nothing ever removed or re-examined.
 
-- **Scope:** `scripts/gate-phase4.sh` and nothing else. Three sections go.
+**The first draft of this phase was a pure trim and its central claim was
+wrong**, which is recorded because the error is the interesting part: it proposed
+cutting §3 on the grounds that `tests/gate_phase6.rs:gate5_a_bare_directory_reaches_the_browser`
+covers it. That test pipes stdout, so `src/tui.rs:run` returns `NoScreen` at
+`src/term.rs:detect_iterm2` **before `Browser::open` is ever constructed** — it
+proves the browser *surface* was selected, never that the browser *starts at the
+named directory*. And `tikray samples` in §3 is the **only launch in the whole
+script that passes a directory at all**; every other one `cd`s first. Cutting it
+would have left a regression that browses the working directory instead of the
+named one invisible to all 104 assertions and all surviving sections.
+
+- **Scope:** `scripts/gate-phase4.sh` and nothing else.
+
+  **Three sections go:**
 
   | § | What it asks | Why it goes |
   |---|---|---|
-  | 3 | `tikray <dir>` browses there | `tests/gate_phase6.rs:gate5_a_bare_directory_reaches_the_browser` asserts it headlessly through the binary |
-  | 4 | `--browse <file>` highlights it | **subsumed by §8**, which asks the same of a *hidden* file — a strictly stronger case that also exercises `src/tui.rs:entries_with` |
-  | 5 | `tikray view <path>` unchanged | its emission is machine-checked twice (`tests/gate.rs:gate4_force_emits_anyway` and `scripts/gate-phase9.sh`), and the *visual* is the same inline draw §2 already performs |
+  | 3 | `tikray <dir>` browses **there** | the property moves rather than dies: §1 stops `cd`-ing and passes `"$REPO/samples"` as an argument, so the same launch tests it at zero extra cost |
+  | 4 | `--browse <file>` highlights it | subsumed by §8 **once §8 is fixed** — see decision 2 |
+  | 5 | `tikray view <path>` unchanged | `src/main.rs:run`'s bare-file branch calls `src/main.rs:view(false, &path)`, **literally the same function** the subcommand calls, so §2 already exercises it including `detect_iterm2` |
 
-  **The rule the survivors satisfy, stated so the next phase has a test to apply:
-  a human item may only ask what a machine cannot see.** A spill, an indent, a
-  picture, a message rendered in the right *place*, a terminal restored. Anything
-  about *which surface ran* is machine-checkable and already checked.
+  **Three checks arrive**, because the audit found the script under-covering
+  shipped items as well as over-covering:
+
+  | Added to | What was missing |
+  |---|---|
+  | §1 | the directory argument, per the table above |
+  | §8 | Phase 10's item 5 also names `tikray ~/.config` opening there and `←` landing on the parent's first row; neither was in the script |
+  | §6 | Phase 8's item 6 names "converting does **not** reset the zoom", which nothing asks |
 
   Three decisions:
 
-  1. **The two kinds of cut are not the same, and conflating them would hide the
-     weaker one.** §3 and §5 are replaced by **machine** assertions — the check
-     still happens, by a better means. §4 is replaced by **another human
-     section** testing a stronger case, so the total human coverage genuinely
-     shrinks: nobody will check `--browse` on a *visible* file again. That is
-     accepted because §8's hidden-file case exercises strictly more code (the
-     same dispatch, plus `entries_with`'s exemption), and a case that passes the
-     harder test and fails the easier one is not reachable here.
-  2. **Shipped spec text is not touched.** Phase 4's item 6 names
-     `tikray view <path>`, and Phase 6's item 5 names `<dir>` and `--browse`;
-     those stay exactly as written, because the record of what a phase decided
-     to check is not edited when a later phase finds a better way to check it.
-     **The script is a procedure and tracks the code** — Phase 6's
-     evidence-versus-procedure distinction, applied a third time and for the
-     first time to *remove* rather than amend, which is a step further and is
-     why it is said out loud rather than assumed to carry over.
-  3. **The finding that motivates the whole phase is recorded, not just acted
-     on:** *Phase 6's machine item 5 subsumes half of Phase 6's own human item
-     6.* It added headless dispatch assertions in the very phase whose human item
-     asks a person to check the same dispatch by eye — the human half was written
-     first and nobody revisited it when the machine half landed. **That is a
-     general hazard of this methodology**, not a mistake in Phase 6: a phase
-     writes its human item before it knows what its machine items will cover, and
-     nothing in the loop asks it to look again afterwards.
+  1. **The rule, stated precisely enough to be applied — and the first draft's
+     version was too loose.** It said "a human item may only ask what a machine
+     cannot see", which would also condemn §1's listing question and §7's
+     `OutputIsSource` question, both of which *are* asserted at rule level
+     (`tests/gate_phase10.rs`, `tests/gate_phase5.rs`). The rule is narrower:
+     **a human item may only ask what a machine cannot see *about the rendering
+     or the private wiring*.** `entries` is public and asserted; that
+     `Browser::render` puts its result on screen is not. `convert_to` is public
+     and asserted; that its message lands in the pane rather than over the layout
+     is not. The three cuts survive that rule; so do the seven survivors.
+  2. **§8 is not strictly stronger than §4 until its fixture has a second
+     entry.** Round 1 caught this and it falsifies the first draft outright:
+     §8's temp directory holds exactly **one** file, and `src/tui.rs:index_of`
+     falls back to row 0 — so its question passes whether the selection was
+     wired or not, where §4 runs against `samples/` with the file at row 3 of 6.
+     A **subdirectory is added** to §8's fixture (directories sort first), so row
+     0 is not the answer and "highlighted, not merely the right directory" —
+     Phase 6's item 7 calls that "not a near miss" — is actually tested.
+  3. **Shipped spec text is not touched, and the precedent for editing this
+     script does less work here than in Phases 6, 7, 8 and 10.** Each of those
+     amended it because the code moved and the script would otherwise be *wrong*.
+     This phase changes no code and removes checks that are still **true**. So
+     the licence is not "a procedure tracks the code" but something narrower and
+     worth naming: **a procedure may drop a step that a cheaper check now
+     performs, provided the phase names the cheaper check and a gate keeps it
+     alive.** That is what gate item 1 is for.
 
-  **This phase should be built before Phase 10 is gated, and that is deliberate.**
-  Phase 10 is implemented with `reviewed` set and `shipped` still null — its
-  human item is the run this script exists for. Trimming first means **one
-  shorter run discharges both**: §8 is Phase 10's and is untouched here, and the
-  three cut sections are none of Phase 10's business. The alternative — making a
-  person walk the 29-question version once, then immediately deleting a third of
-  it — spends their attention on checks this phase has already established are
-  redundant. Both phases then ship on the same run, which the review record notes
-  as it did for Phase 6 shipping before Phase 5.
+  **The finding that motivated all of this is worth more than the trim:**
+  *Phase 6's machine item 5 subsumes half of Phase 6's own human item 6.* It
+  added headless dispatch assertions in the very phase whose human item asks a
+  person to check that dispatch by eye. **That is structural, not a mistake in
+  Phase 6**: a phase writes its human item before it knows what its machine items
+  will cover, and nothing in the loop asks it to look again afterwards. Ten
+  phases of that is how a gate reaches 29 questions.
 
 - **Exit gate:** two items runnable by `cargo test` with no terminal, and one a
   human checks.
 
-  1. **Every assertion named as a replacement exists.** `tests/gate_phase11.rs`
-     asserts that `tests/gate_phase6.rs` contains
-     `gate5_a_bare_directory_reaches_the_browser` and
-     `gate5_browse_sends_a_file_to_the_browser_too`, and that `tests/gate.rs`
-     contains `gate4_force_emits_anyway` — **by name, by reading the files.**
-     Unusual, and it earns its place: this phase's entire justification is "a
-     machine already checks that", and if one of those is later renamed or
-     deleted the justification evaporates **silently**, leaving a human gate that
-     stopped covering something and a machine gate that never started. Cheap
-     insurance against a claim rotting.
+  1. **Every check named as a replacement still exists.**
+     `tests/gate_phase11.rs` reads the other gate files and asserts, **by name**:
+     `tests/gate.rs:gate4_force_emits_anyway` and `src/main.rs:view` for §5's
+     cut, and that `scripts/gate-phase4.sh` still contains the strings the moved
+     checks became — `"$REPO/samples"` as an argument in §1, and `--browse` on a
+     hidden file in §8. Unusual, and it earns its place: this phase's whole
+     justification is "something cheaper checks that now", and a rename or a
+     deletion evaporates it **silently**, leaving a human gate that stopped
+     asking and no machine gate that started.
+
+     **A name-in-file grep passes on a commented-out or `#[ignore]`d test**, so
+     item 1 is a tripwire rather than a proof — stated because the first draft
+     implied more. Item 2 is what actually runs them.
   2. **Phases 1–10's gates still pass, unmodified**, all 104 assertions across
      nine files, plus `scripts/gate-phase9.sh`.
-  3. **Human, once:** the trimmed script runs start to finish, its sections are
-     numbered contiguously, and it still asks about the border, the indent, the
-     centring, the pane-rendered flattening notice, the `--browse` highlight on a
-     hidden file, and both interruptions. Seven sections, and nothing a machine
-     could have asked instead.
+  3. **Human, once:** the trimmed script runs start to finish with **seven
+     sections numbered contiguously**, and the two orphaned comment blocks that
+     documented the cut sections go with them. It still asks about the border,
+     the indent, the centring, the pane-rendered flattening notice, the
+     `--browse` highlight on a hidden file **against a fixture with more than one
+     entry**, both interruptions, and the three newly added checks.
 
-- **Close-out:** `README.md`'s line describing what `scripts/gate-phase4.sh`
-  covers. **No `rules/` file changes** — none declares a script in `sources`, and
-  none documents the gate. **`CLAUDE.md` needs no change**: it says a phase
-  carries a gate someone else could check, which is what this phase is *for*.
+  **This phase should be built before Phase 10 is gated.** Phase 10 is
+  implemented with `reviewed` set and `shipped` null; §8 is its section and is
+  improved rather than cut here, and two of the three additions are *its* missing
+  clauses. So one shorter and more complete run discharges both, where the
+  alternative walks a person through 29 questions and then deletes a third of
+  them. The review record notes the out-of-order ship as it did for Phase 6.
+
+- **Close-out:** `README.md` line 216 describes the script as covering "the human
+  items for Phases 4-8 and 10", which stays literally true and stops being
+  *useful* — it becomes a statement of what the script is **for** (the checks no
+  machine can make) rather than a phase list that will be stale again by the next
+  phase. **No `rules/` file changes** — none declares a script in `sources`.
+  **`CLAUDE.md` needs no change**: it says a phase carries a gate someone else
+  could check, which is what this phase is in service of.
 
 <!--
 The review record is a sibling file, not a section: it lives at

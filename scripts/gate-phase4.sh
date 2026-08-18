@@ -88,7 +88,7 @@ check_stty() {
 # Preflight
 # ---------------------------------------------------------------------------
 
-bold "tkr-001 Phases 4-8 and 10 — the human gate items"
+bold "tkr-001 Phases 4-8, 10 and 12 — the human gate items"
 echo
 
 if [ "${TERM_PROGRAM:-}" != "iTerm.app" ] && [ "${LC_TERMINAL:-}" != "iTerm2" ]; then
@@ -345,11 +345,48 @@ ask "Does 'a' now do nothing at all — the old key is retired?"
 ask "Does the footer read '. filtered' and '. all (n hidden)'?"
 
 # ---------------------------------------------------------------------------
+# Phase 12 — wrap-around, the wider preview, and the scroll thumb
+# ---------------------------------------------------------------------------
+
+echo
+bold "11. wrap-around, a wider preview, and the scroll thumb"
+dim "   First samples/, which is six rows and so shows NO thumb:"
+dim "     · press ↑ on the first entry — it must go to the LAST"
+dim "     · press ↓ on the last entry — it must come back to the FIRST"
+dim "     · look at the preview: it is wider than it was, and the filenames"
+dim "       on the left are still readable"
+dim "     · press q"
+pause "ready"
+snapshot
+( cd "$REPO/samples" && "$TIKRAY" )
+echo
+check_stty
+ask "Did ↑ on the first row wrap to the last, and ↓ on the last back to the first?"
+ask "Is the preview wider, with the filenames still readable?"
+ask "Was there NO scroll thumb on the list border? (six rows fit)"
+
+echo
+dim "   Now a directory that cannot fit: 60 copies of icon.svg, built here so"
+dim "   this works whatever size your window is."
+THUMB="${TMPDIR:-/tmp}/tikray-gate12"; rm -rf "$THUMB"; mkdir -p "$THUMB"
+i=1; while [ "$i" -le 60 ]; do
+  cp "$REPO/samples/icon.svg" "$THUMB/img$(printf '%02d' "$i").svg"; i=$((i + 1))
+done
+dim "   Scroll to the bottom with ↓ (or G) and watch the thumb travel."
+pause "ready"
+snapshot
+"$TIKRAY" "$THUMB"
+echo
+check_stty
+ask "Did a thumb appear on the list's right-hand border?"
+ask "Did it reach the BOTTOM of the border when the list reached its last row?"
+
+# ---------------------------------------------------------------------------
 # Item 7a — Ctrl-C, which raw mode makes a keypress
 # ---------------------------------------------------------------------------
 
 echo
-bold "9. Ctrl-C inside the TUI — a KeyEvent, not a signal"
+bold "12. Ctrl-C inside the TUI — a KeyEvent, not a signal"
 dim "   crossterm's raw mode goes through cfmakeraw, which clears ISIG, so the"
 dim "   terminal never turns Ctrl-C into SIGINT here. tikray handles it as quit."
 echo
@@ -367,7 +404,7 @@ ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
 # ---------------------------------------------------------------------------
 
 echo
-bold "10. kill -INT — the other mechanism entirely"
+bold "13. kill -INT — the other mechanism entirely"
 dim "   A real signal default-terminates without unwinding, so no Drop runs and"
 dim "   nothing would restore the terminal. signal-hook is pinned for this one"
 dim "   case, and turns it into the loop's other exit."

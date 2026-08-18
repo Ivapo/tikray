@@ -74,6 +74,11 @@ phases:
     shipped: null
     cut: 2026-08-18
     by: tkr-001
+  - name: "Phase 14 — a help panel, a footer that says less, and one palette"
+    reviewed: null
+    shipped: null
+    cut: null
+    by: null
 
 extends: null
 supersedes: null
@@ -3185,6 +3190,150 @@ and every phase adds.**
   make. **No `rules/` file changes**; none declares a script in `sources`.
   **`CLAUDE.md` needs no change** — it says a phase carries a gate someone else
   could check, which this serves.
+
+### Phase 14 — a help panel, a footer that says less, and one palette
+
+*Produces the observable: no. The image it draws is the same image, at the same
+size, in the same place. What changes is everything around it. This is the
+phase §1 says has to be argued for, and the argument is that the three
+remaining UI items are all chrome by definition — a phase that moved the
+picture as well would be two phases wearing one number, which is why Phase 12
+took the mechanical half and left this one.*
+
+**Appended 2026-08-18. This is the phase Phase 12's preamble calls "Phase 13",
+a number the cut trim now holds** — the two are unrelated and the collision is
+an accident of the trim being revived and cut between them. Phase 12 took the
+three UI items that were gateable; these are the three that are taste, plus the
+one hazard that is neither.
+
+- **Scope:** `src/tui.rs`.
+
+  | File | Entry points |
+  |---|---|
+  | `src/tui.rs` | `+ pub fn footer_left(images: usize, hidden: usize, zoom: u32) -> String` — the count and the state, pure |
+  | `src/tui.rs` | `+ pub fn footer_split(footer: Rect) -> (Rect, Rect)` — text left, brand right |
+  | `src/tui.rs` | `+ pub fn help_rows() -> &'static [(&'static str, &'static str)]` — the panel's contents, and the only list of them |
+  | `src/tui.rs` | `+ pub fn help_area(area: Rect) -> Rect` — the centred dialog |
+  | `src/tui.rs` | `+ enum Mode { Browse, Help }` on `Browser`; `Browser::key` gains the `?` arm and a `Help` dispatch |
+  | `src/tui.rs` | `- fn keys` — replaced by `footer_left`; its doc comment's argument survives into it |
+  | `src/tui.rs` | `Browser::render` draws the palette, the brand and the panel |
+
+  Five decisions:
+
+  1. **The keys leave the footer for the panel, and the count stays.** Today
+     `keys` spells out seven bindings across the full width. After this the
+     footer is `` ` 6 images  ?:help  q:quit` `` on the left and the brand on the
+     right, which is the ask.
+
+     **The hidden count is the one thing that cannot move**, and Phase 7 and
+     Phase 10 both argued why: a filtered listing that does not say it is
+     filtered is indistinguishable from an empty directory. So `footer_left`
+     keeps it — `` ` 6 images, 3 hidden` `` — and only the **key** `.` moves into
+     the panel. That is a real loss of discoverability and it is taken
+     deliberately: the count is the part that tells a user something is wrong,
+     and `?` is one keystroke from there.
+
+     **The zoom level also stays**, against the literal reading of "only the
+     number of images the ? and q". At 4× the preview is a crop of the middle
+     sixteenth, and the only thing distinguishing that from a broken decode is
+     the `4x`. It renders at levels 2 and 4 and vanishes at 1, which is today's
+     behaviour unchanged.
+  2. **While the panel is open the image is not placed, and this needs no new
+     mechanism.** It is the load-bearing decision of the phase.
+
+     The panel is ratatui cells drawn over a rectangle that may overlap the
+     image. Ratatui does not know the image is there — §2.14 — so those cells
+     paint over the picture, and on close the diff writes spaces where the panel
+     was and stops. `placed` still holds the old bytes, `want == self.placed`,
+     and `place` returns early: **the image is gone and never comes back**, for
+     the rest of the session or until a resize.
+
+     The fix is to route it through the invalidation rule already there rather
+     than around it. Entering `Help` calls `place(area, None)`, which blanks the
+     rectangle and clears `placed`; leaving it recomputes and places fresh,
+     because `placed` is `None` and any `want` differs from it. **No new
+     concept**, and the panel is free to be any size anywhere.
+
+     **Not taken: keeping the panel out of the image rectangle.** It would work
+     — the layout knows both rectangles — but it makes the panel's size a
+     function of the pane split, so Phase 12's 30/70 and any later change to it
+     silently resize the help text. Blanking costs one frame of the picture and
+     buys the panel its independence.
+  3. **The palette is `PanEx`'s, taken by name.** Measured in its `panex-tui`
+     crate's `ui.rs`: `ACCENT = Color::Rgb(255, 191, 0)` for the brand and
+     nothing else, `Color::DarkGray` for chrome — footer text and both block
+     borders — `Color::Yellow` for section titles in the panel, `Color::Cyan`
+     for its key column, `Color::White` for its descriptions. The brand string
+     matches its shape too: `` `  panex ` `` becomes `` `  tikray ` ``, bold.
+
+     **Two places keep what they have.** The selection stays `REVERSED` rather
+     than becoming a coloured background: it is the one element that has to read
+     on a filename of any length against a terminal of any theme. And the status
+     row's convert result — Phase 5's — becomes `Yellow`, which is what `PanEx`
+     colours a transient status message, and is the *only* colour this phase
+     adds to a line that carries meaning rather than chrome.
+  4. **`help_rows` is the only list of the bindings, and it lists nothing that
+     is not bound.** `PanEx` states the same rule and enforces it by hand; this
+     phase does the same, because the alternative — a dispatch table `Browser::key`
+     and the panel both read — is a refactor of the key handler that this phase
+     has no other reason to touch, and touching it is how Phase 12 found itself
+     fixing a zoom-reset bug it did not set out to fix.
+
+     **What that costs is stated in the gate**: item 3 pins what `help_rows`
+     says, and cannot prove the key does it. That correspondence is item 5's,
+     by hand.
+  5. **`?` and `Esc` both close, and `q` closes rather than quits.** A modal
+     that quits the application on `q` is a trap, and `PanEx` binds
+     `Esc/q/?:close` for the same reason. The footer says which while the panel
+     is open, so the changed meaning of `q` is on screen the whole time it is
+     changed.
+
+- **Exit gate:** four items runnable by `cargo test` with no terminal, and one a
+  human checks in iTerm2.
+
+  1. **`footer_left` renders the four states.** `footer_left(6, 0, 1)` is
+     `` ` 6 images` ``; `footer_left(6, 3, 1)` is `` ` 6 images, 3 hidden` ``;
+     `footer_left(6, 0, 4)` is `` ` 6 images  4x` ``; `footer_left(1, 0, 1)` is
+     `` ` 1 image` `` — singular, because a count that says "1 images" is the
+     kind of thing that survives forever once shipped. The `?:help  q:quit` half
+     is not in this function: it is styled separately and is a constant.
+  2. **`footer_split` puts the brand flush right.** For an 80-column footer row
+     at `y = 23`: the brand rect is at `x = 80 - BRAND.chars().count()`, its
+     width is exactly `BRAND.chars().count()`, and the text rect takes the rest
+     from `x = 0`. Asserted for a 20-column row as well, where the two still
+     tile the width without overlapping — the narrow window is where a
+     right-aligned constant goes wrong.
+  3. **`help_rows` lists every binding the browser has, and only those.** The
+     set of key strings is asserted exactly, as a set: `↑/↓`, `⏎`, `←`, `.`,
+     `+/-`, `0`, `P`, `J`, `?`, `q`. Ten rows, every one with a non-empty
+     description.
+
+     **This item pins a list against itself and that is worth saying.** It
+     catches a row deleted or a description emptied; it cannot catch a row that
+     lies, because `Browser::key` is private and this project gates from
+     `tests/`. Decision 4 takes that cost knowingly and item 5 pays it.
+  4. **Phases 1–12's gates still pass, unmodified**, all 114 assertions across
+     ten files.
+  5. **Human, in iTerm2, as `bash scripts/gate-phase4.sh 12`:** in `samples/`,
+     on an image that is drawn — press `?`. The panel appears, centred, and the
+     footer's right-hand end reads `tikray` in amber. Press `?` again.
+
+     **The question is whether the picture came back.** That is decision 2, it
+     is the one defect this phase can ship, and no assertion can see it: the
+     bytes in `placed` are identical either way, and the difference is entirely
+     in what is on the glass. Then press every key the panel lists and confirm
+     each does what its row says — decision 4's cost, paid here.
+
+     It appends as **§12**, and is the first section written since the script
+     took a section argument: this phase's four questions cost four answers.
+
+  Tests land in `tests/gate_phase14.rs`; the ten existing gate files are not
+  edited. Item 5 amends `scripts/gate-phase4.sh`.
+
+- **Close-out:** `rules/tui.md` — the footer, the palette, the mode and the
+  blank-on-Help rule; it is at 231/250 lines and **`max_lines` will need to
+  rise**. `README.md`'s Browsing section, where the key list is now a panel.
+  **`CLAUDE.md` needs no change** — it names no key and no colour.
 
 <!--
 The review record is a sibling file, not a section: it lives at

@@ -44,6 +44,11 @@ phases:
     shipped: 2026-08-17
     cut: null
     by: null
+  - name: "Phase 8 — zoom in the browser, in three centred steps"
+    reviewed: null
+    shipped: null
+    cut: null
+    by: null
 
 extends: null
 supersedes: null
@@ -87,6 +92,16 @@ produced no observable at all.
 - **Editing.** No crop, resize-as-a-command, rotate, filter, or composite.
   Scaling exists only where it serves display fitting, and is not a user-facing
   operation in v1.
+
+  **CORRECTED 2026-08-18 — the second sentence is reopened by Phase 8, and only
+  the second.** Zoom in the browser is a user-facing scaling operation by any
+  reading, so this non-goal is narrowed rather than reinterpreted: scaling
+  becomes user-facing *for display*, on request, in the browser alone. The first
+  sentence stands entirely — nothing is cropped, rotated or filtered **into a
+  file**, and Phase 8's crop exists only to decide which pixels the terminal is
+  shown. Nothing it does can be saved, which is the line this non-goal is really
+  drawing and the reason narrowing it does not start down the operator-set slope
+  §1.1 was written to refuse.
 - **Animation.** No animated GIF or APNG playback; a multi-frame input is shown
   and converted as its first frame, and says so.
 - **Batch pipelines.** No globbing, recursion, or parallel conversion of a
@@ -223,6 +238,16 @@ out_h = max(1, round(h * scale))
 An image that already fits is emitted at native size, because `scale` clamps to
 `1.0`. An image larger in either axis is scaled down until both fit. The ratio
 is preserved by construction, since one `scale` drives both axes.
+
+**CORRECTED 2026-08-18 — the `1.0` clamp is a *default*, not an invariant, and
+Phase 8 is the one thing allowed past it.** Everything above remains exactly
+true of `src/display.rs:fit` and of every automatic sizing decision tikray
+makes; what changes is that the browser can be *asked* to exceed it. This note
+exists because the clamp reads as a property of the system — "Tikray never
+upscales" is how `README.md` put it — and after Phase 8 it is a property of the
+unattended path only. The distinction that keeps it honest: nothing upscales
+unless a person pressed a key for it, and no upscaled pixel is ever written to a
+file.
 
 **The viewport comes from `crossterm::terminal::window_size()`**, whose
 `WindowSize` carries `width` and `height` in pixels alongside `rows` and
@@ -820,7 +845,25 @@ papered over.
   since rasterizing an SVG at half the intended size wastes the one advantage
   vector input has.)*
 
-- **OQ-8** — **Should vector input be allowed to render *larger* than its natural
+- **OQ-8** — ~~**Should vector input be allowed to render *larger* than its natural
+  size?**~~ **RESOLVED 2026-08-18 by Phase 8 — yes, on request, and not only
+  vector.** The question asked whether *vector* should be special-cased past the
+  clamp, and the answer turned out to be that the clamp was the wrong thing to
+  special-case: Phase 8 lets a person zoom **any** image in the browser, which
+  answers the 24×24-icon-as-a-speck complaint without needing a vector rule at
+  all. The question is left visible because its framing is the instructive part —
+  it assumed the fix had to be about *what kind of input* it was, when it was
+  about *who asked*.
+
+  **The vector half it named is genuinely not delivered**, and that is the
+  residue: Phase 8 zooms by cropping the decoded buffer and letting iTerm2
+  upscale the pixels, so an SVG at 4× is a blocky 4× raster rather than a sharp
+  re-render. Doing better means keeping the `usvg` tree or the source bytes past
+  `src/load.rs:load` and rasterizing again per zoom level — which is the one
+  thing that would make vector input pay off, and is recorded here as available,
+  not taken. *(Original text below.)*
+
+  **Should vector input be allowed to render *larger* than its natural
   size?** §2.11 applies §2.6's never-upscale clamp to SVG exactly as to raster,
   so a `viewBox="0 0 24 24"` icon draws as a 24-pixel speck — consistent with a
   24×24 PNG, and arguably the whole advantage of vector input thrown away, since
@@ -1957,6 +2000,116 @@ neither worth its own review round — and the gate keeps them separate.
   | `README.md` | both behaviours; the Browsing section names the keys and would otherwise be wrong about what is listed |
 
   **`CLAUDE.md` needs no change**; no invocation changes.
+
+### Phase 8 — zoom in the browser, in three centred steps
+*Produces the observable: yes — it is the observable, made bigger. §1's image is
+what the user sees, and this phase exists because at fit size some of them
+cannot be seen well enough.*
+
+**Appended 2026-08-18, after the spec reached `done`.** Asked for by the person
+using it, which is the same standing Phases 6 and 7 had. **It reopens a non-goal
+rather than an open question** — §1.1's "scaling … is not a user-facing
+operation in v1" — so that subsection carries a dated note, and so does §2.6,
+whose `1.0` clamp this is the first thing permitted past. It also resolves OQ-8,
+though not in the direction that question expected.
+
+- **Scope:** `+` / `-` / `0` in the browser, three levels, centred.
+
+  | File | Entry points |
+  |---|---|
+  | `src/display.rs` | `+ pub fn sequence_at(img: &DynamicImage, size: (u32,u32)) -> Result<Vec<u8>, TikrayError>` — emits exactly `size`, **without `fit`**; `sequence` is unchanged and keeps Phase 1's gate item 2 |
+  | `src/tui.rs` | `+ pub struct Zoom(u8)` or equivalent with `1 / 2 / 4`; `+ pub fn zoom_view(native: (u32,u32), pane: (u32,u32), level: u32) -> ((u32,u32,u32,u32), (u32,u32))` — pure: crop rect in source pixels, and the size to emit; `Browser` gains the level; `pane_sequence` grows a level-aware sibling |
+
+  **The terminal will not clip, so tikray crops.** §2.14's row 8 measured it: an
+  image larger than its region spills across the layout rather than being cut
+  off, because OSC 1337 draws at the cursor. So zoom cannot be "emit a bigger
+  number" — the payload itself must become the visible region.
+  `image::DynamicImage::crop_imm` does it, and everything downstream is unchanged:
+  the cropped buffer goes through the same encode, the terminal does the same
+  rendering, and tikray still resamples nothing (§2.3).
+
+  Five decisions:
+
+  1. **`fit`'s clamp is a default, not an invariant, and this is the one thing
+     allowed past it.** This is the decision the phase turns on and it is *not*
+     obvious: crop the source and the crop is **smaller** than the pane, so
+     `src/display.rs:fit` refuses to scale it up and the image draws at crop size
+     instead of filling the pane — zoom silently does nothing but crop. Hence
+     `sequence_at`, which takes the emitted size directly. `fit` and `sequence`
+     are untouched, so every automatic path keeps the clamp and Phase 1's gate
+     item 2 stays green; only a keypress reaches the new one.
+  2. **Levels are multiples of *fit*: 1×, 2×, 4×.** Not absolute ratios (1:1,
+     2:1), because fit already varies with the pane, so "twice the size of what I
+     am looking at" is predictable where "100%" is not. Three levels because the
+     ask was "a few", and because the fourth step of a centre-only zoom shows so
+     little of the image that it argues for pan instead — which this phase does
+     not have.
+  3. **Centred, with no pan, and the cost is named rather than discovered.** At
+     2× a person sees a quarter of the image and at 4× a sixteenth, always the
+     middle. That is enough to answer *is this sharp* and useless for *what is in
+     that corner*. Pan is not taken here because the arrow keys drive the list
+     and giving them a second, mode-dependent meaning is a larger decision than
+     the scaling is; it is a candidate for a later phase, weighed against use of
+     this one rather than against the imagination of it.
+  4. **The level resets to 1× when the highlighted entry changes.** A zoom
+     carried onto the next file shows a stranger's middle with no indication why,
+     and the browser's job is to say what you are looking at. It is the same
+     rule, and the same reason, as Phase 5's result line.
+  5. **The upscaling is the terminal's, and SVG is not re-rasterized.** iTerm2
+     scales the cropped payload, so an SVG at 4× is a blocky 4× raster rather
+     than a sharp re-render — see OQ-8's residue. Named here so it is a known
+     limit of this phase rather than a defect found later, and so the phase that
+     wants to fix it knows the cost: keeping the `usvg` tree or the source bytes
+     alive past `src/load.rs:load`.
+
+  **The arithmetic, since it bit once already.** With `s = fit`'s scale and a
+  level `L`, the visible source region is `floor(pane / (s·L))` **clamped to the
+  source**, centred; the emitted size is `round(region · s·L)` **clamped to the
+  pane**. Both clamps are load-bearing and the second is not decorative: with
+  `round` on the region and no clamp on the output, a 1200×800 image in a 640×720
+  pane at 4× emits **721px into a 720px pane** — one pixel of spill, which is
+  §2.14's hazard reached by rounding. Measured while drafting, before it was
+  written down as a gate.
+
+- **Exit gate:** four items runnable by `cargo test` with no terminal, and one a
+  human checks.
+
+  1. **`zoom_view` reproduces the arithmetic**, in a 640×720 pane. A **24×24**
+     source: `L=1` → crop `(0,0,24,24)`, emit `(24,24)`; `L=2` → the same crop,
+     emit `(48,48)`; `L=4` → the same crop, emit `(96,96)`. Nothing is cropped
+     because the whole image still fits — and `(48,48)` is the first emitted size
+     in this project that **exceeds its source**, which is decision 1 visible in
+     a literal. A **1200×800** source: `L=2` → crop `(300,62,600,675)`, emit
+     `(640,720)`; `L=4` → crop `(450,231,300,337)`, emit `(640,719)`.
+  2. **`L=1` is exactly what ships today.** 1200×800 in that pane → crop
+     `(0,0,1200,800)` and emit **`(640,427)`** — byte-identical to the literal
+     `tests/gate_phase6.rs` already asserts for `pane_offset`, and to Phase 4's
+     item 2. This is the regression item that matters: the whole existing TUI
+     runs through the level-1 path, so if it is not a no-op the phase has broken
+     everything it did not intend to touch.
+  3. **The emitted size never exceeds the pane, and the crop never exceeds the
+     source.** A property, asserted over a swept range of sources, panes and all
+     three levels rather than a handful of examples — because the failure it
+     guards is a spill, which no test can see once it happens, and because the
+     one-pixel case above was found by sweeping and not by reasoning.
+  4. **Phases 1–7's gates still pass, unmodified.** All 89 assertions — 16, 11,
+     12, 13, 9, 14 and 14 — green with no edits to any of the seven files.
+  5. **Human, in iTerm2:** `+` enlarges the previewed image and `-` shrinks it
+     back, `0` returns to fit, and the level **stays inside the pane at every
+     step** — the border property Phases 4, 6 and 7 each asserted, now with the
+     one feature deliberately pushing against it. A 24×24 icon at 4× is visibly
+     large where it used to be a speck, which is OQ-8 answered in the place a
+     person can see it. Moving to another file returns to fit.
+
+  Tests land in `tests/gate_phase8.rs`; the seven existing gate files are not
+  edited, which is item 4. Item 5 amends `scripts/gate-phase4.sh` again.
+
+- **Close-out:** `rules/tui.md` gains the levels, the crop rule and the reset;
+  `rules/iterm2-display.md` gains `sequence_at` beside `sequence` and the fact
+  that the clamp is now escapable; `README.md` gains the keys, and its Sizing
+  section says outright that **Tikray never upscales**, which stops being true of
+  the browser. `max_lines` raises are not predicted — see Phase 5's close-out for
+  why.
 
 <!--
 The review record is a sibling file, not a section: it lives at

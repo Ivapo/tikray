@@ -3009,6 +3009,34 @@ its human gate is pending**, so the walkthrough is happening regardless. Phase
 "whichever phase next amends the script, **carried on a gate run someone is
 already waiting on**".
 
+**That answers the *cost* limb of the cut and not the *payoff* limb**, which the
+record states as "break-even around five future runs and nothing specced to
+trigger them". The queue is still thin: one further phase is anticipated — the
+visual work, palette and `?` overlay and footer — and it is the only future gate
+run this phase can point to.
+
+**What it actually delivers, since the whole case is size:** 448 lines → **~395**,
+38 questions → **35**. Phase 11 would have delivered 411 → ~340 and 33 → 27. The
+trim is **smaller now than the one judged not worth building**, because §9 was
+added in between, and it lands above the 385/29 that prompted the original
+complaint. Stated plainly rather than left to be computed, because it is the
+number the decision turns on.
+
+**The coupling this phase depends on was refused once, by the only party who can
+grant it — and granted this time.** Phase 11 argued to build *before* Phase 10's
+human run "so one shorter pass discharged both"; the human **decoupled them** and
+ran Phase 10's gate against the long script. That is the same structure proposed
+here, so proposing it silently would be asking a question already answered no.
+It is not silent: **the person asked whether the script still needed all its
+tests a second time, and chose "add §9, and take the trim" from an option that
+stated the certification run is the one they were about to do.** Recorded because
+a premise a phase cannot secure for itself must be shown to have been secured
+elsewhere.
+
+**If that run happens first, this phase reverts to the condition it was cut on**
+— and no fallback is specced, deliberately: the answer then is to cut it again,
+not to build it against an empty queue.
+
 **Why Phase 12 declined it and this phase does not.** Phase 12's round 2 found
 that taking Phase 11's licence means taking its condition — *a procedure may drop
 a step a cheaper check performs, provided the phase names the cheaper check and
@@ -3017,6 +3045,14 @@ that "the replacements Phase 11 identified" was a **fork**. Both objections were
 to *bundling the trim into a phase about something else*. This phase's whole
 subject is the trim, so it carries the tripwire (gate item 1) and settles the
 fork (decision 2) rather than inheriting either.
+
+**The record's own caution about this subject, which is not about bundling and
+is not retired by anything above:** Phase 12's decline recorded that *"the trim
+has now produced a blocking finding in **every** phase that has touched it"* —
+five rounds in Phase 11, one in Phase 12, and two in this phase's round 1. That
+is six for six. It is not an argument that the trim is wrong; it is evidence that
+**editing a human gate is harder to get right than the edit looks**, which is why
+this phase carries a tripwire rather than trusting a careful reading.
 
 **And the script grew 16% while the phase to shrink it was cut and revived** —
 385 lines and 29 questions at Phase 11's drafting, 448 and 38 now. That is not an
@@ -3029,11 +3065,11 @@ and every phase adds.**
 
   | § | What it asks | What replaces it |
   |---|---|---|
-  | 3 | `tikray <dir>` browses **there** | §8's `"$TIKRAY" "$HID/.hidden-dir"` — a directory argument, already asked as "did the hidden directory open at all?" |
+  | 3 | `tikray <dir>` browses **there** | §8's `"$TIKRAY" "$HID/.hidden-dir"` — a directory argument, already asked as "did the hidden directory open at all?" — and asked *harder*, since §8 also checks the hidden count and the `←` landing |
   | 4 | `--browse <file>` highlights it | §8, which asks the same of a **hidden** file against a fixture with a visible `sub/` at row 0, so the row-0 fallback is a wrong answer |
   | 5 | `tikray view <path>` unchanged | §2 runs `src/main.rs:view(false, &path)` — literally the same function, including its `detect_iterm2` call |
 
-  Three decisions:
+  Four decisions:
 
   1. **The rule the survivors satisfy, narrower than Phase 11's first attempt:**
      a human item may only ask what a machine cannot see **about the rendering or
@@ -3051,7 +3087,18 @@ and every phase adds.**
      §3's property is covered and §1 needs no edit at all. **Fewer moving parts
      than Phase 11 proposed, for the same coverage** — and the tripwire below
      pins the thing that makes it true.
-  3. **`scripts/gate8.sh` is not touched.** It is Phase 3's separate script and
+  3. **One coverage delta is real and is named rather than absorbed.** §3 is the
+     only launch anywhere that passes a **relative** directory; §8's is absolute,
+     and `tests/gate_phase6.rs:gate5_a_bare_directory_reaches_the_browser` also
+     uses an absolute path and exits at `detect_iterm2` before `Browser::open`.
+     After this trim, a relative directory argument is exercised by nothing —
+     and Phase 11 documented that one makes `Path::parent()` return `Some("")`
+     and breaks `←`, which is still true of `src/tui.rs:ascend`. Accepted rather
+     than fixed: the failure needs a person to type `tikray somedir` from its
+     parent, and covering it means keeping a whole section for one argument
+     form. A later phase wanting it back should make §8's launch relative rather
+     than restore §3.
+  4. **`scripts/gate8.sh` is not touched.** It is Phase 3's separate script and
      nothing here concerns it; named because a phase about trimming gate scripts
      that silently leaves one alone invites the question later.
 
@@ -3066,11 +3113,25 @@ and every phase adds.**
      - `--browse "$HID/.hidden-pic.png"` and `mkdir -p "$HID/sub"` — §4's, and
        **the second is the one that can rot silently**: without a visible `sub/`
        above the hidden file, row 0 answers §8's highlight question by luck;
-     - `"$TIKRAY" samples/landscape.svg` — §2, which replaces §5.
+     - `"$TIKRAY" samples/landscape.svg` — §2, which replaces §5;
+     - **and the code fact that makes §2 a replacement at all**:
+       `view(false, &path)` in `src/main.rs`, the call by which the bare-path
+       branch reaches the same function the `view` subcommand does.
+
+     **That last is the correction round 1 forced.** Without it the tripwire
+     survives the one refactor this cut is exposed to — a bare-path branch given
+     its own inline path, which `src/main.rs:run`'s own comment warns against —
+     and the licence's "a gate keeps it alive" is unmet for one of three cuts.
+     Phase 11 asserted it; this phase had dropped it.
+
+     **`tests/gate.rs:gate4_force_emits_anyway` is the stronger replacement for
+     §5**, named here as such: it runs `tikray view <path>` end to end and
+     asserts the OSC bytes, where §2 reaches the same function by another route.
+     Item 2 keeps it green, so it needs no assertion of its own.
 
      **Call forms because Phase 11 learned it the hard way**: its round 4 found
-     the tripwire asserting `"$REPO/samples"`, a string that occurs four times as
-     a `cd` target, so it was green before the phase changed anything and green
+     the tripwire asserting `"$REPO/samples"`, a string that occurs **five** times
+     as a `cd` target today (Phase 12 added one), so it was green before the phase changed anything and green
      again if reverted. A substring test on a script is almost always vacuous.
   2. **Phases 1–10 and 12's gates still pass, unmodified**, all 114 assertions
      across ten files.
@@ -3082,7 +3143,20 @@ and every phase adds.**
 
   The ten existing gate files are not edited, which is item 2.
 
-- **Close-out:** `README.md`'s line naming what `scripts/gate-phase4.sh` covers —
+- **Close-out:** **the script's own residue, which Phase 11's round 5 recorded as
+  unfinished and which this phase must not repeat.** Cutting §5 orphans its
+  `# Item 6c — view still does what it did` header block; the file's opening
+  comment still narrates `view <path>` and the `--browse` highlight as steps of
+  this script; and line 91 names "Phases 4-8, 10 and 12", a list that is stale at
+  every phase. All three are edited, not deleted — the header is the script's
+  record of why its sections exist.
+
+  Sections renumber to **1–8**, contiguous. Phase 12's text says its section
+  "appends as §9"; after this it is §6, and that pointer is **left stale** under
+  §6.1 — a shipped phase's text is not edited when a later phase moves the code
+  under it.
+
+  `README.md`'s line naming what `scripts/gate-phase4.sh` covers —
   it lists phase numbers, which will be stale again at the next phase, so it
   becomes a statement of what the script is *for*: the checks no machine can
   make. **No `rules/` file changes**; none declares a script in `sources`.

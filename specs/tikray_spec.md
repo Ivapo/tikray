@@ -2850,6 +2850,13 @@ is any *indication* that it scrolled — which is what the thumb below is.
      highlighted entry changes and **only** then*. Today's stick-at-the-ends
      behaviour has the same wart; this phase is touching the arm, so it fixes it
      rather than inheriting it.
+
+     **This early return is ungated, and that is stated rather than left to be
+     found.** `Browser::key` is private, and item 5 runs in `samples/`, which has
+     six rows — so the one-entry path is never exercised by anything. It also
+     costs an undocumented incidental: in a one-entry directory whose preview
+     failed to decode, `↓` currently retries the decode, and after this it does
+     not. Nothing documents that behaviour and no rule contradicts its removal.
   2. **The list takes 30% where it took 35%**, so the preview gains five points —
      at 158 columns the preview's inner width goes 101 → 109 cells, which at the
      measured 16 px/cell is 128 px of image. Deliberately modest: the ask was "a
@@ -2876,13 +2883,30 @@ is any *indication* that it scrolled — which is what the thumb below is.
      viewport (the list block's inner height). And **the offset must be read
      after `render_stateful_widget`**, which is what writes `state.offset`;
      computed before, the thumb lags a frame and only a human would ever see it.
-  4. **Phase 11's trim is taken here, which closes §0's open licence.** That
-     phase was cut with its three deletions left "available to whichever phase
-     next amends `scripts/gate-phase4.sh`, carried on a gate run someone is
-     already waiting on". **This is that phase**: item 5 below needs a human run
-     regardless, so the deletions cost nothing beyond the edit — exactly the
-     condition the closing note named. §3, §4 and §5 of the script go, with the
-     replacements Phase 11 identified.
+  4. **Phase 11's trim is *declined* here, and §0's licence stays open.** The
+     first draft took it. Round 2 showed that taking it means taking a condition
+     the draft dropped: Phase 11 states the licence as *"a procedure may drop a
+     step that a cheaper check now performs, **provided the phase names the
+     cheaper check and a gate keeps it alive**"*, and its round 4 hardened that
+     tripwire to assert **call forms** rather than substrings. This phase added
+     no counterpart item, so the deletions would have shipped with the licence's
+     condition unmet.
+
+     **And "the replacements Phase 11 identified" turns out to be a fork, not a
+     list.** Phase 11's table requires §1 to gain `cd "$REPO"` *and* an absolute
+     argument *and* a new question ("both halves are required"); its own later
+     parenthetical records that Phase 10's §8 launch has since made §1's argument
+     "a second cover rather than the only one". Both readings are supported by
+     the same phase, they are materially different edits, and nothing in this
+     phase's gate could catch the wrong one — item 5 asks nothing about the
+     script's content.
+
+     So it is declined, on the grounds Phase 11's own closing note supplies:
+     *"if no such phase comes, nothing was lost."* Restoring the tripwire and
+     resolving the fork is a phase's worth of work, and **the trim has now
+     produced a blocking finding in every phase that has touched it** — five
+     rounds in Phase 11, one here. This phase's own subject is clean and
+     gateable; bundling the trim would make it neither.
 
 - **Exit gate:** four items runnable by `cargo test` with no terminal, and one a
   human checks.
@@ -2923,21 +2947,32 @@ is any *indication* that it scrolled — which is what the thumb below is.
   4. **Phases 1–10's gates still pass, unmodified**, all 104 assertions across
      nine files.
   5. **Human, in iTerm2:** in `samples/`, `↓` on the last entry goes to the first
-     and `↑` on the first goes to the last. In a directory longer than the pane —
-     the script uses `$REPO/tests/fixtures`, which has 20 entries — a thumb
-     appears, reaches the bottom when the list does, and is **absent** in
-     `samples/`, which fits. The preview is wider without filenames being
-     cramped, and the image still sits inside its border.
+     and `↑` on the first goes to the last. The preview is wider without
+     filenames being cramped, and the image still sits inside its border.
+
+     **The thumb needs a directory the script builds**, and the first draft's
+     choice could not have shown one: `tests/fixtures` holds 20 entries of which
+     **17** pass the default filter, while the list's inner height on the machine
+     §2.14 measured is **41 rows** — so `len <= viewport`, `scroll_thumb` returns
+     `None`, and the item's contrast ("present here, absent in `samples/`")
+     collapses to absent in both. That is the shape §0 records as the failure to
+     avoid: a human item shipping with no runnable form.
+
+     So the script makes one: **60 copies of `icon.svg` in a scratch directory**,
+     which overflows any ordinary window and depends on nothing about the
+     operator's disk. The thumb appears there, reaches the bottom when the list
+     does, and is **absent in `samples/`** (6 rows), which is the contrast that
+     shows `None` is reached rather than the thumb merely being invisible.
 
   Tests land in `tests/gate_phase12.rs`; the nine existing gate files are not
-  edited. Item 5 amends `scripts/gate-phase4.sh`, which decision 4 is also
-  editing.
+  edited. Item 5 amends `scripts/gate-phase4.sh` — the only edit this phase makes
+  to it, decision 4 having declined the rest.
 
 - **Close-out:** `rules/tui.md` — the layout is a named function, the movement
   keys wrap, and the thumb is new; it is at 211/230 lines. `README.md`'s Browsing
   section. **`src/tui.rs:keys`' doc comment**, which says the list title "is 35%
   of the window wide" and is one line inside a file this phase edits anyway.
-  `scripts/gate-phase4.sh` for decision 4 and item 5. **`CLAUDE.md` needs no
+  `scripts/gate-phase4.sh` for item 5. **`CLAUDE.md` needs no
   change**; it names no key and no layout. *(Phase 7's shipped spec prose carries
   the same 35% figure and is **left** — §6.1: shipped text is not edited when a
   later phase moves the code under it.)*

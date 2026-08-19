@@ -3275,11 +3275,14 @@ one hazard that is neither.
        of this hazard.
 
      Both are answered by one rule: when the mode is `Help`, `frame` calls
-     `self.place(Rect::ZERO, None)` **before** `terminal.draw`. `place` blanks
-     `self.placed`'s own stored rectangle, so the `area` argument is unused when
-     the placement is `None`. Leaving `Help` then needs no special case at all —
-     `placed` is already `None`, so the next frame's ordinary draw-then-place
-     repaints the picture fresh.
+     `self.place(Rect::ZERO, None)` **before** `terminal.draw`, **and skips the
+     tail `place` for that frame**. `place` blanks `self.placed`'s own stored
+     rectangle, so the `area` argument is unused when the placement is `None`.
+     The second half is not redundant: `browser.preview` is still `Some(img)` in
+     `Help`, so leaving the tail call alone re-emits the picture over the panel
+     on the same frame it was blanked for. Leaving `Help` then needs no special
+     case at all — `placed` is already `None`, so the next frame's ordinary
+     draw-then-place repaints the picture fresh.
 
      **Not taken: keeping the panel out of the image rectangle.** It would work
      — the layout knows both rectangles — but it makes the panel's size a
@@ -3346,7 +3349,7 @@ one hazard that is neither.
   1. **`footer_left` renders its states, and `image_count` counts images.**
      `footer_left(6, 0, 1)` is `` ` 6 images` ``; `footer_left(6, 3, 1)` is
      `` ` 6 images, 3 hidden` ``; `footer_left(6, 0, 4)` is `` ` 6 images  4x` ``;
-     `footer_left(6, 3, 4)` carries both; `footer_left(1, 0, 1)` is
+     `footer_left(6, 3, 4)` is `` ` 6 images, 3 hidden  4x` ``; `footer_left(1, 0, 1)` is
      `` ` 1 image` `` — singular, because a count that says "1 images" is the kind
      of thing that survives forever once shipped. Separately, `image_count` on a
      hand-built listing of two directories, two previewable files and one
@@ -3360,10 +3363,17 @@ one hazard that is neither.
      origin. Six, not twenty: at 20 columns the subtraction is still positive and
      the case proves nothing, whereas below 9 a literal `width - count` wraps
      `u16` and puts the brand at column 65533.
-  3. **`help_rows` lists every binding, and each row says something.** Flattened
-     across its sections the key strings are exactly `↑/↓`, `g/G`, `⏎`, `←`, `.`,
-     `+/-`, `0`, `P`, `J`, `?`, `q/Esc` — eleven — and every description is
-     non-empty.
+  3. **`help_rows` lists every *action*, and each row says something.**
+     Flattened across its sections the key strings are exactly `↑/↓`, `g/G`, `⏎`,
+     `←`, `.`, `+/-`, `0`, `P`, `J`, `?`, `q/Esc` — eleven — and every
+     description is non-empty.
+
+     **Actions, not keycodes, and the difference is the invariant's wording.**
+     `Browser::key` binds aliases the panel does not spell — `j`/`k`, `h`/`l`,
+     `→`, `Backspace`, `Home`/`End`, `=` — and `Ctrl-C` is bound in `quits`
+     rather than in the browser. A panel that listed every keycode would be a
+     worse panel, so the rule decision 4 maintains by hand is *one row per
+     action*, which is true at ship; "every binding" was not.
 
      **This item pins a list against itself, and is worth having anyway.** It
      cannot fail on a row that *lies*, because `Browser::key` is private and this
@@ -3382,7 +3392,9 @@ one hazard that is neither.
      §0's rule is that a human item may only ask what a machine cannot see, and
      centring is not that.
   5. **Phases 1–12's gates still pass, unmodified** — 114 `#[test]` functions
-     across ten files, which is what `cargo test` reports.
+     across ten files, which is what `cargo test` reports — **and
+     `bash scripts/verify-sections.sh` exits 0** once §12 exists, which is what
+     proves item 6 is reachable at all.
   6. **Human, in iTerm2, as `bash scripts/gate-phase4.sh 12`:** in `samples/`,
      on an image that is drawn — press `?`. The panel appears and the footer's
      right-hand end reads `tikray` in amber. Press `?` again.
@@ -3397,12 +3409,19 @@ one hazard that is neither.
      Then press every key the panel lists and confirm each does what its row
      says — decision 4's cost, paid here.
 
-     It appends as **§12**, before the verdict block rather than at end of file,
-     and is the first section written since the script took a section argument.
-     Four questions, four answers. **The selector is sound as of `927b7d5`**,
-     which repaired guards that had been nested rather than sequential — under
-     which `bash scripts/gate-phase4.sh 9` ran no section and exited 0 under a
-     pass banner. That commit also makes an out-of-range selector exit 2, so a
+     It appends as **§12, immediately after the `fi` that closes §11** — stated
+     mechanically because the obvious phrasing is a trap. "Before the verdict
+     block" is ambiguous between the `# Verdict` banner and the
+     `if [ "$fail" -eq 0 ]` test, and until `99bec11` the banner sat *inside*
+     §11's guard, so that reading opened a nested guard: `SECTIONS` becomes 12
+     and `--list` shows twelve, while `bash scripts/gate-phase4.sh 12` runs zero
+     sections and exits 0 under the pass banner. Both round-2 reviewers built it
+     and confirmed. **The convention is that each guard closes where the next one
+     opens**, and `scripts/verify-sections.sh` — written in `99bec11` for this
+     reason — is what enforces it; item 5 runs it.
+
+     The selector itself is sound as of `927b7d5`, which repaired guards that had
+     been nested since `5ed8809`, and made an out-of-range selector exit 2 so a
      `12` that names nothing fails loudly rather than reporting success.
 
   Tests land in `tests/gate_phase14.rs`; the ten existing gate files are not
@@ -3414,9 +3433,10 @@ one hazard that is neither.
   |---|---|
   | `rules/tui.md` | the footer, the palette, the mode, and decision 2's ordering rule; at 231/250, so **`max_lines` rises to 280** |
   | `scripts/gate-phase4.sh` | **§8's last question is now false and must be rewritten**: it asks `Does the footer read '. filtered' and '. all (n hidden)'?`, strings this phase deletes with `keys`. It becomes a question about `` ` N images, K hidden` ``, which also buys the one check nothing else makes — that `render` actually calls `footer_left` and `footer_split`. Plus §12 for item 6 |
-  | `README.md` | the Browsing section, where the key list becomes a panel |
+  | `README.md` | the Browsing section, where the key list becomes a panel — **keeping the alias spellings** (`j`/`k`, `h`/`l`, `Backspace`, `Home`/`End`), which the panel drops by design and prose is the right home for |
   | `specs/tikray_spec.md` | dated `CORRECTED` notes on **Phase 7** and **Phase 10**, whose shipped text pins footer strings this phase removes — §6.1 step 1 |
-  | `rules/core-pipeline.md`, `rules/convert.md`, `rules/iterm2-display.md` | **none needed**, and the reason rather than the omission: all three declare `src/tui.rs` in `sources`, but their `covers` name the pipeline, the convert path and the escape sequence — none of which this phase touches |
+  | `rules/core-pipeline.md` | **none needed**, and the reason rather than the omission: it is the one other rule that declares `src/tui.rs` in `sources`, so `/sync-rules` will re-read the file for it — but its `covers` names the pipeline, which this phase does not touch |
+  | `rules/convert.md`, `rules/iterm2-display.md`, `rules/svg-rasterization.md` | **none needed**: none declares `src/tui.rs` at all — they source `src/convert.rs` + `src/main.rs`, `src/display.rs` + `src/term.rs`, and `src/svg.rs`. *(The first draft claimed all three declared `src/tui.rs`, which is false of two of them; the conclusion was right for the wrong reason.)* |
   | `CLAUDE.md` | **none needed** — it names no key and no colour |
 
 <!--

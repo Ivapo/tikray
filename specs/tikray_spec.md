@@ -3405,7 +3405,7 @@ one hazard that is neither.
      assertion can see either: the bytes in `placed` are identical whichever way
      it goes, and the difference is entirely on the glass. Then, with the panel
      open, `q` and `Esc` each close it and leave the browser running — decision
-     5, which item 3 cannot catch because `help_rows`' own `q` row says *quit*.
+     5, which item 3 cannot catch because `help_rows`' own `q/Esc` row says *quit*.
      Then press every key the panel lists and confirm each does what its row
      says — decision 4's cost, paid here.
 

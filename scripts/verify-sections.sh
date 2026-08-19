@@ -8,7 +8,7 @@
 # reports success is the worst failure available to a gate, and it is invisible
 # to anyone running it -- which is why this is a script and not a habit.
 #
-# Needs no terminal, asks nothing, and runs in about a second:
+# Needs no terminal, asks nothing, launches no binary and signals nothing:
 #
 #   bash scripts/verify-sections.sh                  # the real gate script
 #   bash scripts/verify-sections.sh /tmp/broken.sh   # or any copy, to prove it bites
@@ -48,7 +48,13 @@ for l in lines:
     out.append("" if skip else l)
 s = "\n".join(out)
 s = s.replace('  read -r _\n', '  :\n').replace('  read -r reply\n', '  reply=y\n')
-s = re.sub(r'^\s*\$TIKRAY.*$', '  :', s, flags=re.M)
+# Neutralise anything that launches or signals the real binary. The stub must
+# match how the gate actually spells it -- `( cd "$REPO" && "$TIKRAY" ... )`,
+# never a bare `$TIKRAY` at the start of a line. An earlier version regexed for
+# the latter, matched nothing, and so drove the real TUI 15 times and fired
+# `pkill -INT` at whatever tikray was newest on the machine.
+s = re.sub(r'^.*"\$TIKRAY".*$', '  :', s, flags=re.M)
+s = re.sub(r'^.*\bpkill\b.*$', '( : ) &', s, flags=re.M)
 s = re.sub(r'^(bold "(\d+)\..*)$', r'echo "RAN \2"\n\1', s, flags=re.M)
 open(sys.argv[2], "w").write(s)
 PY

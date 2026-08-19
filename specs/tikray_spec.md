@@ -75,7 +75,7 @@ phases:
     cut: 2026-08-18
     by: tkr-001
   - name: "Phase 14 — a help panel, a footer that says less, and one palette"
-    reviewed: null
+    reviewed: 2026-08-18
     shipped: null
     cut: null
     by: null
@@ -3343,8 +3343,9 @@ one hazard that is neither.
      browsing and `Esc/q/?:close` while the panel is open — so the changed
      meaning of `q` is on screen the whole time it is changed.
 
-- **Exit gate:** five items runnable by `cargo test` with no terminal, and one a
-  human checks in iTerm2.
+- **Exit gate:** five items a machine runs with no terminal — four under
+  `cargo test`, and one that also runs a shell script — and one a human checks
+  in iTerm2.
 
   1. **`footer_left` renders its states, and `image_count` counts images.**
      `footer_left(6, 0, 1)` is `` ` 6 images` ``; `footer_left(6, 3, 1)` is

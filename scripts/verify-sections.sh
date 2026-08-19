@@ -22,6 +22,12 @@ bad()  { printf '\033[31m  FAIL\033[0m %s\n' "$1"; fail=1; }
 
 # 1. The guards are sequential. Reading top to bottom, `if want; then` and `fi`
 #    must alternate -- a second `if` before its `fi` is a nested guard.
+#
+#    This walks every `^fi$`, not only the guards', so a top-level `if ...; then
+#    ... fi` written INSIDE a section would decrement the depth and could mask a
+#    real nesting. That is why it is the cheap pre-check and check 2 is the
+#    authoritative one: check 2 drives the file and cannot be fooled by
+#    punctuation.
 depth=0; nested=0
 while read -r line; do
   case "$line" in
@@ -55,6 +61,7 @@ s = s.replace('  read -r _\n', '  :\n').replace('  read -r reply\n', '  reply=y\
 # `pkill -INT` at whatever tikray was newest on the machine.
 s = re.sub(r'^.*"\$TIKRAY".*$', '  :', s, flags=re.M)
 s = re.sub(r'^.*\bpkill\b.*$', '( : ) &', s, flags=re.M)
+s = re.sub(r'^\s*open .*$', '  :', s, flags=re.M)
 s = re.sub(r'^(bold "(\d+)\..*)$', r'echo "RAN \2"\n\1', s, flags=re.M)
 open(sys.argv[2], "w").write(s)
 PY
@@ -77,11 +84,12 @@ got=$(bash "$probe" "1,$total" 2>/dev/null | grep -oE '^RAN [0-9]+' | awk '{prin
   || bad "selector 1,$total ran [${got:-none}]"
 
 # 3. A selector naming nothing must fail loudly, not pass silently.
+range_ok=1
 for bad_sel in 0 "$((total + 1))" abc "1,$((total + 1))"; do
   bash "$GATE" "$bad_sel" >/dev/null 2>&1
-  [ "$?" -eq 2 ] || bad "selector '$bad_sel' did not exit 2"
+  [ "$?" -eq 2 ] || { bad "selector '$bad_sel' did not exit 2"; range_ok=0; }
 done
-ok "out-of-range and non-numeric selectors exit 2"
+[ "$range_ok" -eq 1 ] && ok "out-of-range and non-numeric selectors exit 2"
 
 echo
 if [ "$fail" -eq 0 ]; then

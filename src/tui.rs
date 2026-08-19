@@ -33,8 +33,9 @@ use crossterm::style::ResetColor;
 use image::DynamicImage;
 use ratatui::DefaultTerminal;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph};
 
 use crate::convert::{self, Output};
 use crate::display;
@@ -44,30 +45,234 @@ use crate::term;
 /// How often the loop wakes to notice a signal (see [`Interrupt`]).
 const POLL: Duration = Duration::from_millis(100);
 
-/// The keys, in the footer. Short enough that it needs no second row.
+/// The count and the state, on the left of the footer.
 ///
-/// The hidden count joins them here rather than in the list pane's border title,
+/// The hidden count lives here rather than in the list pane's border title,
 /// which is the obvious home and the wrong one: that title is 30% of the window
 /// wide, [`compact`] exists only because it is already tight enough to need
 /// `$HOME` rewritten to `~`, and ratatui truncates — so the count would vanish on
 /// exactly the narrow window where it matters. The footer spans the window.
-fn keys(all: bool, hidden: usize, zoom: u32) -> String {
-    // Three states. Off, the key re-hides both kinds, so "images only" would be
-    // half the story; on with nothing hidden, a key advertising a filter that
-    // holds nothing back is noise and the listing is its own evidence.
-    let filter = if all {
-        "  . filtered".to_string()
-    } else if hidden > 0 {
-        format!("  . all ({hidden} hidden)")
-    } else {
-        String::new()
-    };
-    let level = if zoom > 1 {
-        format!("  {zoom}x")
-    } else {
-        String::new()
-    };
-    format!(" ↑/↓ move   ⏎ open   ← up{filter}   +/- zoom{level}   P/J convert   q quit ")
+///
+/// **The count is the one thing that could not move into the panel.** A filtered
+/// listing that does not say it is filtered is indistinguishable from an empty
+/// directory — Phase 7 and Phase 10 both argued it — so only the *key* `.` went
+/// into [`help_rows`]. That is a real loss of discoverability, taken deliberately:
+/// the count is the part that tells a user something is wrong, and `?` is one
+/// keystroke from there.
+///
+/// **The zoom level stays for a related reason.** At 4× the preview is a crop of
+/// the middle sixteenth, and the only thing distinguishing that from a broken
+/// decode is the `4x`. It renders at levels 2 and 4 and vanishes at 1.
+///
+/// Singular at one, because a count reading "1 images" is the kind of thing that
+/// survives forever once shipped.
+pub fn footer_left(images: usize, hidden: usize, zoom: u32) -> String {
+    let plural = if images == 1 { "" } else { "s" };
+    let mut line = format!(" {images} image{plural}");
+    if hidden > 0 {
+        line.push_str(&format!(", {hidden} hidden"));
+    }
+    if zoom > 1 {
+        line.push_str(&format!("  {zoom}x"));
+    }
+    line
+}
+
+/// How many rows of `entries` are images — which is **not** `entries.len()`.
+///
+/// The listing is directories *and* files, and with the filter off it is also
+/// files that are not images, so nothing in a `Vec<Entry>` could answer this
+/// before [`Entry::previewable`] existed. Without it the obvious implementation
+/// is `entries.len()`, and a directory of four subdirectories reads `4 images`.
+pub fn image_count(entries: &[Entry]) -> usize {
+    entries
+        .iter()
+        .filter(|e| !e.is_dir && e.previewable)
+        .count()
+}
+
+/// The brand, flush right in the footer — `PanEx`'s `  panex ` in tikray's name.
+///
+/// `pub` because `tests/` is a separate crate and Phase 14's gate item 2 measures
+/// the split against this width.
+pub const BRAND: &str = "  tikray ";
+
+/// The footer's two rectangles: the text on the left, [`BRAND`] flush right.
+///
+/// Computed rather than laid out, and **the subtraction is guarded**: a literal
+/// `footer.width - BRAND.chars().count()` wraps `u16` below nine columns and puts
+/// the brand at column 65533. Clamping the brand to the row instead degrades
+/// continuously — the two rects tile the width at every size, they never overlap,
+/// and neither origin ever leaves the footer.
+pub fn footer_split(footer: Rect) -> (Rect, Rect) {
+    let brand_w = u16::try_from(BRAND.chars().count())
+        .unwrap_or(u16::MAX)
+        .min(footer.width);
+    let text_w = footer.width - brand_w;
+    (
+        Rect {
+            width: text_w,
+            ..footer
+        },
+        Rect {
+            x: footer.x + text_w,
+            width: brand_w,
+            ..footer
+        },
+    )
+}
+
+/// The footer's right-hand hint, in each mode.
+///
+/// Two constants rather than one, so the changed meaning of `q` is on screen the
+/// whole time it is changed: a modal that quits the application on `q` is a trap.
+const HINT_BROWSE: &str = "?:help  q:quit";
+const HINT_HELP: &str = "Esc/q/?:close";
+
+/// The brand's colour, and **only** the brand's.
+///
+/// `PanEx` measures this as `ACCENT` and spends it more widely — a status icon,
+/// the directory icon, two spans in its activity panel. Restricting it to one
+/// string is tikray's rule, not an observation about `PanEx`, and is said so here
+/// so a later reader does not go looking for the precedent.
+const ACCENT: Color = Color::Rgb(255, 191, 0);
+
+/// The panel's left pad for a section title, the deeper one for the rows under
+/// it, and the gap between the key and description columns.
+const HELP_PAD: u16 = 2;
+const HELP_KEY_PAD: u16 = 4;
+const HELP_GAP: u16 = 2;
+
+/// The bindings, by section — **the only list of them there is.**
+///
+/// One row per *action*, never per keycode, and the difference is deliberate:
+/// [`Browser::key`] binds aliases this does not spell (`j`/`k`, `h`/`l`, `→`,
+/// `Backspace`, `Home`/`End`, `=`) and `Ctrl-C` is bound in [`quits`] rather than
+/// in the browser at all. A panel listing every keycode would be a worse panel.
+///
+/// That a row and the key it names agree is maintained **by hand**. The
+/// alternative — a dispatch table that `Browser::key` and this both read — is a
+/// refactor of the key handler Phase 14 had no other reason to touch, and
+/// touching it is how Phase 12 found itself fixing a zoom-reset bug it did not
+/// set out to fix. `tests/gate_phase14.rs` pins what this *says*; that the keys
+/// *do* it is `scripts/gate-phase4.sh` §12, answered by a person.
+pub fn help_rows() -> &'static [(&'static str, &'static [(&'static str, &'static str)])] {
+    // `g`/`G` are bindings and belong here: they are absolute jumps rather than
+    // steps, and they reset the zoom and reload the preview like any other move.
+    const MOVE: &[(&str, &str)] = &[
+        ("↑/↓", "move, wrapping at both ends"),
+        ("g/G", "first / last entry"),
+        ("⏎", "open the directory"),
+        ("←", "up a directory"),
+    ];
+    const VIEW: &[(&str, &str)] = &[
+        (".", "show hidden and non-images"),
+        ("+/-", "zoom — fit, 2x, 4x"),
+        ("0", "back to fit"),
+    ];
+    const CONVERT: &[(&str, &str)] = &[("P", "write PNG beside it"), ("J", "write JPEG beside it")];
+    const PANEL: &[(&str, &str)] = &[("?", "this panel"), ("q/Esc", "quit")];
+    &[
+        ("Move", MOVE),
+        ("View", VIEW),
+        ("Convert", CONVERT),
+        ("Panel", PANEL),
+    ]
+}
+
+/// The width of the panel's key column, in cells.
+fn help_key_width() -> u16 {
+    help_rows()
+        .iter()
+        .flat_map(|(_, rows)| rows.iter())
+        .map(|(key, _)| cells(key))
+        .max()
+        .unwrap_or(0)
+}
+
+/// A string's width in cells, saturating, for laying the panel out.
+fn cells(s: &str) -> u16 {
+    u16::try_from(s.chars().count()).unwrap_or(u16::MAX)
+}
+
+/// The panel's own rectangle, centred in `area`.
+///
+/// **Sized from [`help_rows`], never from the pane split.** Keeping the panel out
+/// of the image rectangle would also work — the layout knows both — but it makes
+/// the panel's size a function of the 30/70, so any later change to that split
+/// would silently resize the help text. Blanking the picture for one frame costs
+/// less and buys the panel its independence.
+///
+/// Clamped to `area` first, then offset by `(area.width - width) / 2`. Stated as
+/// the offset and **not** as the symmetric `x + width == area.width - x`, which is
+/// false for any odd remainder: at width 61 in 80 columns it asserts `70 == 71`
+/// on a rectangle as centred as integer division allows.
+pub fn help_area(area: Rect) -> Rect {
+    let rows = help_rows();
+    let key_w = help_key_width();
+    let desc_w = rows
+        .iter()
+        .flat_map(|(_, r)| r.iter())
+        .map(|(_, desc)| cells(desc))
+        .max()
+        .unwrap_or(0);
+    let title_w = rows
+        .iter()
+        .map(|(title, _)| cells(title))
+        .max()
+        .unwrap_or(0);
+
+    // A left pad, the key column, the gap, the description — or just a section
+    // title, on the off chance one is the longest thing in the panel.
+    let inner = (HELP_KEY_PAD + key_w + HELP_GAP + desc_w).max(HELP_PAD + title_w);
+    let width = (inner + HELP_PAD + 2).min(area.width);
+
+    let sections = cells_of(rows.len());
+    let bindings: u16 = rows.iter().map(|(_, r)| cells_of(r.len())).sum();
+    // Two borders, a blank row top and bottom, one row per section title, one per
+    // binding, and a blank row between sections.
+    let height = (4 + sections + bindings + sections.saturating_sub(1)).min(area.height);
+
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    }
+}
+
+/// A count as a cell width, saturating.
+fn cells_of(n: usize) -> u16 {
+    u16::try_from(n).unwrap_or(u16::MAX)
+}
+
+/// The panel's contents, styled: `PanEx`'s yellow titles, cyan keys, white text.
+fn help_lines() -> Vec<Line<'static>> {
+    let key_w = usize::from(help_key_width());
+    let pad = usize::from(HELP_PAD);
+    let key_pad = usize::from(HELP_KEY_PAD);
+    let gap = usize::from(HELP_GAP);
+
+    let mut lines = vec![Line::default()];
+    for (i, (title, rows)) in help_rows().iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::default());
+        }
+        lines.push(Line::from(Span::styled(
+            format!("{:pad$}{title}", ""),
+            Style::default().fg(Color::Yellow),
+        )));
+        for (key, desc) in rows.iter() {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{:key_pad$}{key:<key_w$}{:gap$}", "", ""),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::styled((*desc).to_string(), Style::default().fg(Color::White)),
+            ]));
+        }
+    }
+    lines
 }
 
 /// Why there is no preview, for each standing condition.
@@ -507,7 +712,7 @@ impl Session {
                     dirty = true;
                 }
                 Event::Key(key) if key.is_press() => {
-                    if quits(key.code, key.modifiers) {
+                    if quits(key.code, key.modifiers, browser.helping()) {
                         return Ok(());
                     }
                     browser.key(key.code);
@@ -519,9 +724,32 @@ impl Session {
     }
 
     /// Draw the frame, **then** place the image. The order is load-bearing.
+    ///
+    /// **The help panel inverts it, and both halves of that are required.** The
+    /// panel is ratatui cells over a rectangle that may overlap the image, and
+    /// ratatui does not know the image is there (§2.14), so it goes wrong in two
+    /// opposite directions. Blanking the ordinary way — a `placement` of `None`
+    /// through the tail call — runs *after* the panel is on screen and paints
+    /// spaces across every panel cell inside the image pane; ratatui's front
+    /// buffer still records the panel, so the diff never repaints them and the
+    /// hole survives the whole session. Leaving the tail call alone instead
+    /// re-emits the picture over the panel, because `browser.preview` is still
+    /// `Some` in `Help`. So the blank happens **before** `draw` and the tail
+    /// `place` is **skipped** for that frame.
+    ///
+    /// `place(Rect::ZERO, None)` is not a special case: `place` blanks the
+    /// rectangle *it* stored, so `area` is unused whenever the placement is
+    /// `None`. Leaving the panel needs no case at all — `placed` is already
+    /// `None`, so the next frame's ordinary draw-then-place repaints the picture
+    /// fresh.
     fn frame(&mut self, browser: &mut Browser) -> Result<(), TikrayError> {
         let cell = term::geometry().and_then(|(px, cells)| term::cell_size(px, cells));
         let status = browser.status(cell);
+
+        let helping = browser.helping();
+        if helping {
+            self.place(Rect::ZERO, None)?;
+        }
 
         // The image area comes back out of the closure rather than being
         // computed beside it: bytes sized to a pane the frame did not actually
@@ -530,6 +758,10 @@ impl Session {
         self.terminal
             .draw(|frame| image_area = browser.render(frame, &status))
             .map_err(|source| TikrayError::Tui { source })?;
+
+        if helping {
+            return Ok(());
+        }
 
         let pane = (image_area.width, image_area.height);
         // One call for both, so the offset and the bytes cannot disagree about
@@ -618,9 +850,20 @@ impl Interrupt {
 }
 
 /// Ctrl-C is in this list because raw mode makes it a keypress, not a signal.
-fn quits(code: KeyCode, modifiers: KeyModifiers) -> bool {
-    matches!(code, KeyCode::Char('q') | KeyCode::Esc)
-        || (modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('c'))
+///
+/// **`helping` is why this takes an argument at all.** It runs in
+/// [`Session::browse`] *before* `Browser::key`, and matched `q`/`Esc`
+/// unconditionally until Phase 14 — so those two keys never reached the browser,
+/// and a help panel that trapped them only in `Browser::key` would have shipped
+/// the exact trap it exists to avoid: a modal that quits the application on `q`.
+/// Ctrl-C quits regardless of the mode; `q` and `Esc` quit only when the panel is
+/// shut, and close it when it is open. Phase 4's gate items on both are
+/// unaffected, being `helping == false`.
+fn quits(code: KeyCode, modifiers: KeyModifiers, helping: bool) -> bool {
+    if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('c') {
+        return true;
+    }
+    !helping && matches!(code, KeyCode::Char('q') | KeyCode::Esc)
 }
 
 // ---------------------------------------------------------------------------
@@ -634,6 +877,21 @@ pub struct Entry {
     pub label: String,
     pub path: PathBuf,
     pub is_dir: bool,
+    /// Whether this row is an image, for [`image_count`]. Set for **every** file
+    /// rather than only the filtered ones: with the filter off `entries_with`
+    /// tests nothing, so a footer counting from the listing would count
+    /// directories and text files as images.
+    pub previewable: bool,
+}
+
+/// Which surface the keys and the frame are talking to.
+///
+/// Two states rather than an `Option<Panel>`, because the panel has no state of
+/// its own: [`help_rows`] is a constant and the mode is the whole of it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Browse,
+    Help,
 }
 
 /// Where we are, what is highlighted, and what that decoded to.
@@ -663,6 +921,8 @@ struct Browser {
     /// entry changes, and **only** then — `refresh` runs after a convert, where
     /// the selection has not moved and the zoom has nothing to do with it.
     zoom: usize,
+    /// Browsing, or showing the help panel over it.
+    mode: Mode,
 }
 
 impl Browser {
@@ -707,6 +967,7 @@ impl Browser {
             pending: None,
             result: None,
             zoom: 0,
+            mode: Mode::Browse,
         };
         browser.reload_preview();
         Ok(browser)
@@ -767,6 +1028,13 @@ impl Browser {
 
     fn selected(&self) -> Option<&Entry> {
         self.entries.get(self.list.selected().unwrap_or(0))
+    }
+
+    /// Whether the help panel is up. Read by [`quits`] and by [`Session::frame`],
+    /// which need it for opposite reasons: one to stop `q` quitting, one to blank
+    /// the image before the panel is drawn over where it was.
+    fn helping(&self) -> bool {
+        self.mode == Mode::Help
     }
 
     /// Decode the highlighted entry, or record why there is nothing to draw.
@@ -832,6 +1100,17 @@ impl Browser {
     }
 
     fn key(&mut self, code: KeyCode) {
+        // The panel swallows everything else, and closes on three keys. `q` and
+        // `Esc` reach here at all only because [`quits`] now asks `helping`
+        // first; both close rather than quit, which is what the footer's
+        // right-hand hint says while they mean it.
+        if self.helping() {
+            if matches!(code, KeyCode::Char('?') | KeyCode::Esc | KeyCode::Char('q')) {
+                self.mode = Mode::Browse;
+            }
+            return;
+        }
+
         // The pending confirm is a licence to overwrite, so any key that is not
         // the one that set it clears it. The result line is looser and clears
         // when the highlighted entry changes: a message about a file you just
@@ -868,6 +1147,7 @@ impl Browser {
             }
             KeyCode::Char('-') => self.zoom = self.zoom.saturating_sub(1),
             KeyCode::Char('0') => self.zoom = 0,
+            KeyCode::Char('?') => self.mode = Mode::Help,
             _ => {}
         }
     }
@@ -979,7 +1259,15 @@ impl Browser {
     /// it survives because the cells under it stay blank between frames and
     /// ratatui's diff therefore says nothing about them. The explanation line
     /// lives in its own row above, which is what keeps the rectangle free to be
-    /// blanked directly.
+    /// blanked directly. The help panel is the one exception, and it is safe
+    /// because [`Session::frame`] blanks the image before this runs.
+    ///
+    /// The palette is `PanEx`'s, by name: `DarkGray` for chrome — the footer text
+    /// and both block borders — [`ACCENT`] for the brand, `Yellow` for a transient
+    /// status message and for the panel's section titles, `Cyan` for its key
+    /// column, `White` for its descriptions. **The selection keeps `REVERSED`**
+    /// rather than taking a coloured background: it is the one element that has
+    /// to read on a filename of any length against a terminal of any theme.
     fn render(&mut self, frame: &mut ratatui::Frame, status: &str) -> Rect {
         let Panes {
             list: left,
@@ -999,13 +1287,21 @@ impl Browser {
             .iter()
             .map(|e| ListItem::new(e.label.as_str()))
             .collect();
+        let chrome = Style::default().fg(Color::DarkGray);
         let list = List::new(items)
-            .block(Block::bordered().title(compact(&self.dir)))
+            .block(
+                Block::bordered()
+                    .border_style(chrome)
+                    .title(compact(&self.dir)),
+            )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
             .highlight_symbol("▸");
         frame.render_stateful_widget(list, left, &mut self.list);
 
-        frame.render_widget(Block::bordered().title(" preview "), right);
+        frame.render_widget(
+            Block::bordered().border_style(chrome).title(" preview "),
+            right,
+        );
 
         // After `render_stateful_widget`, which is what writes `state.offset` —
         // computed before, the thumb lags a frame.
@@ -1027,9 +1323,45 @@ impl Browser {
             }
         }
 
-        frame.render_widget(Paragraph::new(status), status_area);
-        let footer_text = keys(self.all, self.hidden, LEVELS[self.zoom]);
-        frame.render_widget(Paragraph::new(footer_text), footer);
+        // A convert result is the only line on this row that carries meaning
+        // rather than chrome, and `PanEx` colours a transient status message
+        // yellow. `status` returns a bare `String`, so the decision is made here.
+        let status_style = if self.result.is_some() {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        };
+        frame.render_widget(Paragraph::new(status).style(status_style), status_area);
+
+        let (text_area, brand_area) = footer_split(footer);
+        let hint = if self.helping() {
+            HINT_HELP
+        } else {
+            HINT_BROWSE
+        };
+        let footer_text = format!(
+            "{}  {hint}",
+            footer_left(image_count(&self.entries), self.hidden, LEVELS[self.zoom])
+        );
+        frame.render_widget(Paragraph::new(footer_text).style(chrome), text_area);
+        frame.render_widget(
+            Paragraph::new(BRAND).style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)),
+            brand_area,
+        );
+
+        if self.helping() {
+            let panel = help_area(frame.area());
+            // `Clear` first: the panel is a modal over two bordered blocks, and
+            // their cells would otherwise show through it. The *image* is not
+            // cleared here — it is not in ratatui's model at all, and
+            // `Session::frame` has already blanked it for this frame.
+            frame.render_widget(Clear, panel);
+            frame.render_widget(
+                Paragraph::new(help_lines())
+                    .block(Block::bordered().border_style(chrome).title(" help ")),
+                panel,
+            );
+        }
 
         image_area
     }
@@ -1081,6 +1413,12 @@ pub fn entries_with(
             let path = entry.path();
             let is_dir = path.is_dir();
             let named = keep.is_some_and(|k| entry.file_name() == k);
+            // Sniffed once, above the filter, and read by both it and
+            // [`Entry::previewable`]. Hoisting is what lets the footer say
+            // *images* with the filter off; it costs the `all` path one short
+            // read per file, which the default path already pays, and it keeps
+            // either path from reading twice.
+            let previewable = !is_dir && previewable_file(&path);
             if !all && !named {
                 // Dot-entries go, directories included. Phase 7 exempted
                 // directories from the *previewability* filter because hiding
@@ -1089,7 +1427,7 @@ pub fn entries_with(
                 if entry.file_name().as_encoded_bytes().starts_with(b".") {
                     return None;
                 }
-                if !is_dir && !previewable_file(&path) {
+                if !is_dir && !previewable {
                     return None;
                 }
             }
@@ -1101,6 +1439,7 @@ pub fn entries_with(
                 label,
                 path,
                 is_dir,
+                previewable,
             })
         })
         .collect();

@@ -390,7 +390,8 @@ ask "Was .hidden-pic.png HIGHLIGHTED — not sub/, which is the first row?"
 echo
 dim "   Now a hidden directory named directly, which is the other half of"
 dim "   'an explicitly named path always opens'. Inside, everything is hidden."
-dim "   Please: look at what it says, then press ← to go up, then q."
+dim "   Please: look at what it says, then press ← to go up. Up there, read"
+dim "   the footer, press '.', read it again, then q."
 pause "ready"
 snapshot
 "$TIKRAY" "$HID/.hidden-dir"
@@ -401,9 +402,16 @@ ask "Did it report how many entries were hidden, rather than 'empty directory'?"
 ask "After ←, did it land on sub/ — a DIFFERENT entry from the one you left?"
 
 echo
-dim "   Two more of Phase 10's clauses, in the browser you just used:"
+dim "   Phase 10's retired key, and Phase 14's footer, in the browser you just"
+dim "   used. Phase 14 deleted the '. filtered' / '. all (n hidden)' strings this"
+dim "   question used to ask for, and the replacement is worth more: up in the"
+dim "   parent, sub/ is the only visible row and it is a DIRECTORY -- so a footer"
+dim "   counting ROWS says 1 and one counting IMAGES says 0, and this is the only"
+dim "   place that tells them apart, or that shows render calls footer_left and"
+dim "   footer_split at all."
 ask "Does 'a' now do nothing at all — the old key is retired?"
-ask "Does the footer read '. filtered' and '. all (n hidden)'?"
+ask "Up there, did the footer read ' 0 images, 2 hidden', then ' 1 image' after '.'?"
+ask "Was 'tikray' flush against the footer's right-hand end the whole time?"
 
 # ---------------------------------------------------------------------------
 # Phase 12 — wrap-around, the wider preview, and the scroll thumb
@@ -489,6 +497,55 @@ wait "$signaller" 2>/dev/null
 echo
 check_stty
 ask "Did it exit by itself, leaving a usable terminal and a visible cursor?"
+
+# ---------------------------------------------------------------------------
+# Phase 14 — the help panel, the footer, and one palette
+# ---------------------------------------------------------------------------
+
+echo
+fi
+if want; then
+bold "12. the help panel, over a picture that has to survive it"
+dim "   Phase 14's item 6, and the one defect this phase can ship. The panel is"
+dim "   ratatui cells over a rectangle that may OVERLAP the image, and ratatui"
+dim "   does not know the image is there -- so it can go wrong in two opposite"
+dim "   directions, and no assertion can see either: the bytes in `placed` are"
+dim "   identical whichever way it goes, and the difference is on the glass."
+echo
+dim "   In samples/, move onto an image that is actually DRAWN, then:"
+dim "     ?     the panel appears over it"
+dim "     ?     it closes -- watch what happens to the picture"
+dim "   Then q."
+pause "ready"
+
+snapshot
+( cd "$REPO/samples" && "$TIKRAY" )
+echo
+check_stty
+ask "With the panel open, did 'tikray' read in amber at the footer's right end?"
+ask "After closing it, did the picture come BACK at all?"
+ask "And come back CLEAN — no band of blank cells where the panel had been?"
+
+echo
+dim "   Now the trap decision 5 exists to avoid: a modal that quits the whole"
+dim "   application on 'q'. Those two keys reach the browser at all only because"
+dim "   `quits` asks whether the panel is up before matching them."
+dim "   Open the panel with '?' and press 'q' -- it should CLOSE, not quit."
+dim "   Open it again and press Esc -- the same. Then press every key the panel"
+dim "   lists and check each does what its row says. 'q' with the panel SHUT"
+dim "   finishes."
+warn "   (help_rows' own q/Esc row says 'quit', so no assertion can catch this.)"
+pause "ready"
+
+snapshot
+( cd "$REPO/samples" && "$TIKRAY" )
+echo
+check_stty
+ask "With the panel open, did 'q' close it and leave the browser running?"
+ask "And did Esc do the same?"
+ask "Did every key the panel lists do what its row says it does?"
+
+echo
 fi
 
 # ---------------------------------------------------------------------------

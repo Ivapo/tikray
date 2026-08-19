@@ -36,7 +36,7 @@
 #
 # Run it in an iTerm2 window:
 #
-#   bash scripts/gate-phase4.sh          all eleven sections
+#   bash scripts/gate-phase4.sh          every section
 #   bash scripts/gate-phase4.sh 9        only section 9
 #   bash scripts/gate-phase4.sh 2,9      sections 2 and 9
 #   bash scripts/gate-phase4.sh --list   what the sections are
@@ -52,10 +52,13 @@ REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TIKRAY="$REPO/target/debug/tikray"
 
 # Which sections to run. No argument means all of them; `9` or `2,9` means only
-# those. This exists because the complaint was never that the script is long —
+# those. This exists because the complaint was never that the script is long --
 # it is that a phase adding four checks makes a person re-answer thirty-eight.
-# Trimming was tried twice and cut twice (§0); it removes three questions and
-# leaves the re-verification untouched, which is the actual cost.
+#
+# The guards must be SEQUENTIAL, never nested: a nested guard is not evaluated
+# when its parent is skipped, so the counter under-runs and a selector past it
+# matches nothing -- which exits 0 with a pass banner and asks no questions.
+# `verify-sections` below is what keeps that honest.
 WANT="${1:-all}"
 section=0
 want() {
@@ -63,6 +66,21 @@ want() {
   [ "$WANT" = all ] && return 0
   case ",$WANT," in *",$section,"*) return 0 ;; *) return 1 ;; esac
 }
+
+# An out-of-range selector must not run zero sections and exit 0 with a pass
+# banner -- a gate that asks nothing and reports success is worse than no gate.
+SECTIONS=$(grep -cE '^bold "[0-9]+\.' "${BASH_SOURCE[0]}")
+if [ "$WANT" != all ] && [ "$WANT" != --list ] && [ "$WANT" != -l ]; then
+  for n in ${WANT//,/ }; do
+    case "$n" in
+      ''|*[!0-9]*) printf 'not a section number: %s\n' "$n" >&2; exit 2 ;;
+    esac
+    if [ "$n" -lt 1 ] || [ "$n" -gt "$SECTIONS" ]; then
+      printf 'no section %s -- this script has %s (try --list)\n' "$n" "$SECTIONS" >&2
+      exit 2
+    fi
+  done
+fi
 
 if [ "$WANT" = --list ] || [ "$WANT" = -l ]; then
   printf 'Sections in %s:\n' "$(basename "${BASH_SOURCE[0]}")"
@@ -138,9 +156,9 @@ dim "building…"
 # ---------------------------------------------------------------------------
 # Item 6a — the browser, and the property no test can see
 # ---------------------------------------------------------------------------
-if want; then
 
 echo
+if want; then
 bold "1. tikray — the browser, opened where you are"
 dim "   Opening the repo's samples/ directory so there is something to look at."
 echo
@@ -173,7 +191,6 @@ dim "   file or two that are not images."
 ask "Were ONLY visible images and directories listed, with a hidden count?"
 ask "Did '.' show everything, and '.' again put the filter back?"
 ask "After toggling, was the SAME file still highlighted?"
-fi
 
 # ---------------------------------------------------------------------------
 # Phase 6 — a bare path dispatches on what the path IS
@@ -181,9 +198,10 @@ fi
 #
 # This section is what Phase 6 changed. Phase 4 asked whether `tikray <path>`
 # opened the browser at that path's directory; the right answer is now no.
-if want; then
 
 echo
+fi
+if want; then
 bold "2. tikray <file> — draws inline, indented, and gives the prompt back"
 dim "   Running: tikray samples/landscape.svg"
 dim "   No browser, no alternate screen — the picture, then your prompt."
@@ -206,9 +224,10 @@ pause "ready — narrow the window first"
 ( cd "$REPO" && "$TIKRAY" samples/landscape.png )
 echo
 ask "Did it still fit on one screen, unwrapped, with the indent intact?"
-if want; then
 
 echo
+fi
+if want; then
 bold "3. tikray <dir> — browses there"
 dim "   Running: tikray samples/    (q to quit)"
 pause "ready"
@@ -218,9 +237,10 @@ snapshot
 echo
 check_stty
 ask "Did it open the browser on samples/?"
-if want; then
 
 echo
+fi
+if want; then
 bold "4. tikray --browse <file> — the browser, that file highlighted"
 dim "   Running: tikray --browse samples/landscape.svg    (q to quit)"
 dim "   This is the spelling of what a bare path meant before Phase 6, and the"
@@ -233,34 +253,32 @@ snapshot
 echo
 check_stty
 ask "Did it open the browser on samples/ with landscape.svg HIGHLIGHTED?"
-fi
 
 # ---------------------------------------------------------------------------
 # Item 6c — view still does what it did
-fi
 # ---------------------------------------------------------------------------
-if want; then
 
 echo
+fi
+if want; then
 bold "5. tikray view <path> — unchanged"
 dim "   Two callers reach the inline draw now; neither may have moved it."
 echo
 ( cd "$REPO" && "$TIKRAY" view samples/landscape.png )
 echo
 ask "Did it draw inline and return to the prompt, taking no screen?"
-fi
 
 # ---------------------------------------------------------------------------
 # Phase 8 — zoom
-fi
 # ---------------------------------------------------------------------------
 #
 # Zoom is the first feature that deliberately pushes against the pane border, so
 # the border property Phases 4, 6 and 7 each asserted is what this section is
 # really testing.
-if want; then
 
 echo
+fi
+if want; then
 bold "6. + and - — zoom, in three centred steps"
 dim "   Opening samples/ again. Please do all of these:"
 dim "     · highlight icon.svg — a 24x24 speck — and press + twice"
@@ -283,7 +301,6 @@ ask "Did + enlarge the image and - shrink it back, with 0 returning to fit?"
 ask "Did it stay INSIDE its border at every level, on every image you tried?"
 ask "Is the 24x24 icon actually usable at 4x, where it used to be a speck?"
 ask "Did moving to another file reset the zoom to fit?"
-fi
 
 # ---------------------------------------------------------------------------
 # Phase 5 — converting from inside the browser
@@ -292,9 +309,10 @@ fi
 # The phase exists because §2.13's flattening notice is an eprintln! and stderr
 # inside the alternate screen paints over the TUI. This section is where that
 # line has to appear in the pane instead.
-if want; then
 
 echo
+fi
+if want; then
 bold "7. P and J — convert from inside the browser"
 dim "   Working in a scratch copy of samples/, so nothing in the repo changes."
 CONV="${TMPDIR:-/tmp}/tikray-gate-phase5"
@@ -326,14 +344,14 @@ echo
 dim "   Opening $CONV so you can check the written files are real images."
 open "$CONV" 2>/dev/null
 ask "Do the written files open in Preview and look right?"
-fi
 
 # ---------------------------------------------------------------------------
 # Phase 10 — dot-entries, and the one check that its exemption was wired in
 # ---------------------------------------------------------------------------
-if want; then
 
 echo
+fi
+if want; then
 bold "8. hidden entries, and --browse on one"
 dim "   First your home directory, which is the case that prompted the phase:"
 dim "   47 dot-entries against 14 visible, and they sort FIRST."
@@ -386,14 +404,14 @@ echo
 dim "   Two more of Phase 10's clauses, in the browser you just used:"
 ask "Does 'a' now do nothing at all — the old key is retired?"
 ask "Does the footer read '. filtered' and '. all (n hidden)'?"
-fi
 
 # ---------------------------------------------------------------------------
 # Phase 12 — wrap-around, the wider preview, and the scroll thumb
 # ---------------------------------------------------------------------------
-if want; then
 
 echo
+fi
+if want; then
 bold "9. wrap-around, a wider preview, and the scroll thumb"
 dim "   First samples/, which is six rows and so shows NO thumb:"
 dim "     · press ↑ on the first entry — it must go to the LAST"
@@ -425,14 +443,14 @@ echo
 check_stty
 ask "Did a thumb appear on the list's right-hand border?"
 ask "Did it reach the BOTTOM of the border when the list reached its last row?"
-fi
 
 # ---------------------------------------------------------------------------
 # Item 7a — Ctrl-C, which raw mode makes a keypress
 # ---------------------------------------------------------------------------
-if want; then
 
 echo
+fi
+if want; then
 bold "10. Ctrl-C inside the TUI — a KeyEvent, not a signal"
 dim "   crossterm's raw mode goes through cfmakeraw, which clears ISIG, so the"
 dim "   terminal never turns Ctrl-C into SIGINT here. tikray handles it as quit."
@@ -445,14 +463,14 @@ snapshot
 echo
 check_stty
 ask "Did Ctrl-C quit cleanly, leaving a usable terminal?"
-fi
 
 # ---------------------------------------------------------------------------
 # Item 7b — a real SIGINT, which runs no Drop at all
 # ---------------------------------------------------------------------------
-if want; then
 
 echo
+fi
+if want; then
 bold "11. kill -INT — the other mechanism entirely"
 dim "   A real signal default-terminates without unwinding, so no Drop runs and"
 dim "   nothing would restore the terminal. signal-hook is pinned for this one"
@@ -471,7 +489,6 @@ wait "$signaller" 2>/dev/null
 echo
 check_stty
 ask "Did it exit by itself, leaving a usable terminal and a visible cursor?"
-fi
 
 # ---------------------------------------------------------------------------
 # Verdict
@@ -480,6 +497,7 @@ fi
 echo
 dim "One last check, since escape state leaks silently: this line should be"
 dim "plain text, and your prompt below it should behave normally."
+fi
 echo
 
 if [ "$fail" -eq 0 ]; then

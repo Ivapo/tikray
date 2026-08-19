@@ -58,7 +58,7 @@ TIKRAY="$REPO/target/debug/tikray"
 # The guards must be SEQUENTIAL, never nested: a nested guard is not evaluated
 # when its parent is skipped, so the counter under-runs and a selector past it
 # matches nothing -- which exits 0 with a pass banner and asks no questions.
-# `verify-sections` below is what keeps that honest.
+# `scripts/verify-sections.sh` is what keeps that honest.
 WANT="${1:-all}"
 section=0
 want() {
@@ -489,15 +489,19 @@ wait "$signaller" 2>/dev/null
 echo
 check_stty
 ask "Did it exit by itself, leaving a usable terminal and a visible cursor?"
+fi
 
 # ---------------------------------------------------------------------------
 # Verdict
+#
+# Everything below is OUTSIDE every `if want; then` guard, and a new section
+# goes ABOVE this banner -- never between it and the verdict, which would nest
+# the new guard inside the last one. `scripts/verify-sections.sh` enforces it.
 # ---------------------------------------------------------------------------
 
 echo
 dim "One last check, since escape state leaks silently: this line should be"
 dim "plain text, and your prompt below it should behave normally."
-fi
 echo
 
 if [ "$fail" -eq 0 ]; then

@@ -51,10 +51,11 @@ pub fn rasterize(path: &Path, bytes: &[u8]) -> Result<DynamicImage, TikrayError>
     let size = tree.size().to_int_size();
     let (width, height) = (size.width(), size.height());
 
-    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or_else(|| TikrayError::Rasterize {
-        path: path.to_path_buf(),
-        reason: format!("{width}x{height} is too large to allocate a pixel buffer for"),
-    })?;
+    let mut pixmap =
+        tiny_skia::Pixmap::new(width, height).ok_or_else(|| TikrayError::Rasterize {
+            path: path.to_path_buf(),
+            reason: format!("{width}x{height} is too large to allocate a pixel buffer for"),
+        })?;
 
     // Identity transform: the pixmap is already the tree's own size, so there
     // is nothing to scale.

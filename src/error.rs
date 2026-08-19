@@ -39,10 +39,7 @@ pub enum TikrayError {
     /// `usvg` is the final arbiter of the detection rule: a false positive — an
     /// HTML file carrying an inline `<svg` — lands here as a legible parse
     /// error rather than as a wrong render.
-    SvgParse {
-        path: PathBuf,
-        source: usvg::Error,
-    },
+    SvgParse { path: PathBuf, source: usvg::Error },
 
     /// The SVG parsed, and turning it into pixels failed.
     Rasterize { path: PathBuf, reason: String },

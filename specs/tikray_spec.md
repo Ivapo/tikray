@@ -2,7 +2,7 @@
 id: tkr-001
 title: tikray
 status: accepted
-last_updated: 2026-08-18
+last_updated: 2026-08-19
 note: >
   A single Rust binary that shows an image inline in iTerm2 and writes it back
   out in another format — the decode/rasterize/encode core, the OSC 1337
@@ -76,7 +76,7 @@ phases:
     by: tkr-001
   - name: "Phase 14 — a help panel, a footer that says less, and one palette"
     reviewed: 2026-08-18
-    shipped: null
+    shipped: 2026-08-19
     cut: null
     by: null
 

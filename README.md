@@ -7,11 +7,11 @@ into a different format (ImageMagick).
 **Tikray** is Quechua for *to turn over / to translate* — it already spans both
 meanings.
 
-> **Status: complete.** All ten phases of `tkr-001` are built.
+> **Status: complete.** Twelve phases of `tkr-001` are built and two were cut.
 > `tikray <file>` draws a PNG, JPEG or SVG inline in iTerm2, `tikray convert`
 > writes any of them back out as PNG or JPEG, and a bare `tikray` opens a file
-> browser that previews what you land on and converts from there — see
-> [`specs/INDEX.md`](specs/INDEX.md).
+> browser that previews what you land on, zooms it, converts from there and
+> explains itself on `?` — see [`specs/INDEX.md`](specs/INDEX.md).
 
 ## Install
 
@@ -123,10 +123,19 @@ anyway.
 
 `tikray` with no arguments — or with a directory, or with `--browse` — opens a
 file list with a preview pane beside it. `↑`/`↓` (or `j`/`k`) move and **wrap
-around** at both ends, `⏎` (or `→`) enters a directory, `←` goes back up, and `q`
+around** at both ends, `⏎` (or `→`) enters a directory, `←` (or `Backspace`) goes
+back up, `g`/`G` (or `Home`/`End`) jump to the first and last entry, and `q`
 quits. A list longer than the pane shows a scroll thumb on its border. The
 highlighted image is drawn **centred** in the pane, scaled to it by the same rule
 above. (The convert keys below are capitals because `j` is already *down*.)
+
+**`?` opens a help panel** listing every one of those actions, which is where the
+key list lives now rather than in the footer. `?`, `Esc` or `q` closes it again —
+with the panel open, `q` closes rather than quits — and the footer says which of
+those two it currently means. The panel spells one row per *action*, so the
+aliases in this paragraph are deliberately not in it. The footer keeps the two
+things that are state rather than instruction: how many images are listed and how
+many entries are held back, and the zoom level when you are not at fit.
 
 **`+` and `-` zoom** the preview through three levels — fit, 2×, 4× — and `0`
 returns to fit. Zooming crops to the centre of the image, because the terminal
@@ -141,8 +150,8 @@ replace it. Converting a file onto itself is refused outright — it would
 re-encode it over itself and change nothing.
 
 **The list shows what tikray can draw and hides what your shell hides** — images
-and directories, with the footer saying how many entries are held back. `.` shows everything and `.` again puts the
-filter back; the setting follows you into subdirectories. Hidden entries — the
+and directories, with the footer reading ` 6 images, 3 hidden`. `.` shows
+everything and `.` again puts the filter back; the setting follows you into subdirectories. Hidden entries — the
 dot-prefixed ones — are held back by the same key, directories included. What
 counts as an image is decided by **reading each file**, not by its extension, so
 a PNG named `.txt` is listed as the PNG it is.

@@ -64,9 +64,11 @@ clear.
 
 ## Status
 
-**All ten phases of `tkr-001` are built.** `tikray <file>` draws PNG, JPEG and
-SVG inline in iTerm2, `tikray convert` writes any of them back out as PNG or
-JPEG, and a bare `tikray` browses files with a live preview and converts from
-there, with `+`/`-` to zoom a preview. Both jobs the idea above names are done,
-and the seed's "any of the others" narrowed once: SVG is input-only.
+**Twelve phases of `tkr-001` are built; two were cut.** `tikray <file>` draws PNG,
+JPEG and SVG inline in iTerm2, `tikray convert` writes any of them back out as PNG
+or JPEG, and a bare `tikray` browses files with a live preview and converts from
+there, with `+`/`-` to zoom a preview and `?` for a help panel. Both jobs the idea
+above names are done, and the seed's "any of the others" narrowed once: SVG is
+input-only. Phases 11 and 13 were the same proposal — trimming the human gate
+script — and were cut twice; the spec's §0 records the arithmetic that settles it.
 Per-phase state lives in `specs/INDEX.md`; current behaviour lives in `rules/`.

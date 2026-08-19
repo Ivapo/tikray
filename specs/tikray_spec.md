@@ -2006,7 +2006,12 @@ neither worth its own review round — and the gate keeps them separate.
      this for `--browse` and going up a directory.
   4. **Four small placements, settled because the gate rides on the first.**
      The hidden count goes in the **footer, beside the key that clears it** —
-     `a all (12 hidden)` from `src/tui.rs:keys`. The list pane's border title is
+     `a all (12 hidden)` from `src/tui.rs:keys`. *(**CORRECTED 2026-08-18 —
+     Phase 14 deletes `keys` and moves the keys into a help panel.** The count
+     stays, and stays in the footer, for exactly the reason this decision gives;
+     it now reads `` ` 6 images, 3 hidden` `` from `src/tui.rs:footer_left`, and
+     it is no longer beside the key that clears it — only `.` moved. The
+     rejection of the border title below stands unchanged.)* The list pane's border title is
      the obvious home and is the wrong one: it is 35% of the window wide,
      `src/tui.rs:compact` exists *only* because that title is already tight
      enough to need `$HOME` rewritten to `~`, and ratatui truncates an over-long
@@ -2535,6 +2540,15 @@ others, on a distinction with no rule behind it.
      stays, and is stated rather than carried over implicitly — a key advertised
      for a filter holding nothing back is noise, and the directory itself is the
      evidence that nothing is missing.
+
+     **CORRECTED 2026-08-18 — Phase 14 deletes both strings with `keys`.** The
+     footer now reads `` ` 6 images, 3 hidden` `` in one state and `` ` 7 images` ``
+     in the other, from `src/tui.rs:footer_left`; the key `.` is in the help
+     panel. What survives is this decision's substance and not its wording — the
+     count is still shown whenever anything is held back, and still omitted when
+     nothing is, for the reason given here. `scripts/gate-phase4.sh` §8's last
+     question was rewritten in the same pass, since it asked for these strings by
+     name.
   3. **An explicitly named path always opens, hidden or not — and the file half
      needs a mechanism, not a claim.** `tikray ~/.config` browses there and
      `tikray --browse ~/.x.png` highlights that file, because **naming a path is

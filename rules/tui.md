@@ -10,9 +10,10 @@ covers: >
   the four things that decide there is no preview, the draw-then-place ordering,
   which surface each invocation reaches, what the convert keys write and what
   the pane says about it, the three zoom levels and why they crop, how the
-  highlight moves and when the thumb appears, and the two interruptions that
-  need different code
-max_lines: 250
+  highlight moves and when the thumb appears, what the footer counts and what the
+  help panel lists, the one palette and the one thing it is not spent on, and the
+  two interruptions that need different code
+max_lines: 280
 generated: 2026-08-18
 ---
 
@@ -73,6 +74,9 @@ here, since leaving is `←` rather than a row. Files must also pass
 `src/load.rs:previewable` on their first `src/load.rs:SVG_SNIFF_LIMIT` bytes —
 **by content, never by extension** — which costs an open and a short read per
 entry per directory change.
+
+The sniff is hoisted **above** the filter, so `src/tui.rs:Entry`'s `previewable` is set
+for every file and not only the filtered ones, at one short read per file on `all`.
 
 `src/tui.rs:entries_with` exempts one entry by name: the path a person put on the
 command line is listed even when the filter would hide it, because naming a path
@@ -188,6 +192,40 @@ exactly the terminal the convert keys go out of their way to serve. A result
 appended below would write a file and say nothing about it on the one surface
 with no picture to confirm it by.
 
+## The footer, the panel, and one palette
+
+`src/tui.rs:footer_left` is the left half — `` ` 6 images, 3 hidden  4x` ``, singular at
+one — `src/tui.rs:footer_split` puts `src/tui.rs:BRAND` flush right, and between them
+sits one of two constants: `?:help  q:quit` browsing, `Esc/q/?:close` with the panel
+open, **so the changed meaning of `q` is on screen the whole time it is changed**. The
+split clamps the brand to the row before subtracting: a literal
+`width - BRAND.chars().count()` wraps `u16` below nine columns and puts it at 65533. `src/tui.rs:image_count` is what *images* means — `!is_dir && previewable`,
+never the row count, which reads `4 images` in a directory of four subdirectories.
+
+The keys left the footer for `src/tui.rs:help_rows`, **the only list of them there is**.
+Two things stayed: the **hidden count**, since a filtered listing that does not say so
+is indistinguishable from an empty directory (only the *key* `.` moved, a loss of
+discoverability taken deliberately); and the **zoom level**, since at 4× the `4x` is all
+that separates a crop of the middle sixteenth from a broken decode.
+
+`help_rows` is **one row per action, not per keycode** — `j`/`k`, `h`/`l`, `→`,
+`Backspace`, `Home`/`End`, `=` are bound and unspelled, and `Ctrl-C` lives in
+`src/tui.rs:quits`. That a row and its key agree is maintained by hand:
+`tests/gate_phase14.rs` pins what the list *says*, `scripts/gate-phase4.sh` §12 is
+where a person checks the keys do it. `src/tui.rs:help_area` sizes the panel from
+that list and not from the pane split, so a later change to the 30/70 cannot
+silently resize the help text. `?` opens it; `?`, `Esc` and `q` all close it, and
+**`q` closing rather than quitting cannot be done in `Browser::key` alone** — `quits`
+runs in `Session::browse` *before* the browser sees the key and matched `q`/`Esc`
+unconditionally, so it takes `helping` now. `Ctrl-C` quits regardless.
+
+The palette is `PanEx`'s by name: `DarkGray` for chrome (footer text, both block borders),
+`Yellow` for section titles and a transient status message, `Cyan` for the key column,
+`White` for descriptions, `src/tui.rs:ACCENT` = `Rgb(255, 191, 0)` for the brand. Two rules
+are tikray's, not `PanEx`'s: **`ACCENT` is spent on the brand and nothing else**, and **the
+selection keeps `REVERSED`**, the one element that must read on a filename of any length
+against a terminal of any theme.
+
 ## Draw, then place
 
 `src/tui.rs:Session` owns the ordering and the invalidation rule, both outside
@@ -199,6 +237,18 @@ resize drops that record by hand, because ratatui repaints its whole buffer and
 destroys the image without touching it. The bytes go to the same stdout ratatui
 writes to, after `draw` returns. `placed` holds the pane **and** the offset — the
 offset is where the bytes go, the pane is what `blank` must erase.
+
+**The help panel inverts the order**, and both halves of that are load-bearing. With the
+mode `Help`, `frame` calls `place(Rect::ZERO, None)` *before* `terminal.draw` **and skips
+the tail `place`**. Blanking the ordinary way runs *after* the panel is drawn and paints
+spaces across every panel cell inside the image pane, which the front buffer records as the
+panel — so the diff never repaints them and the hole survives the session. Leaving the tail
+call alone instead re-emits the picture over the panel, `preview` being still `Some` in
+`Help`. `place` blanks the rectangle *it* stored, so `area` is unused when the placement is
+`None`, and leaving `Help` needs no case at all. (The `Clear` under the panel is unrelated:
+it erases the two blocks' cells, which *are* in the model.) **No assertion can see either
+failure** — the bytes in `placed` are identical whichever way it goes — which is why
+`scripts/gate-phase4.sh` §12 exists.
 
 ## Which surface an invocation reaches
 
